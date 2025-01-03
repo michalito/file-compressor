@@ -1,0 +1,66 @@
+<template id="image-tile-template">
+    <div class="preview-tile mdc-card">
+        <!-- Image Preview Section -->
+        <div class="preview-header">
+            <div class="mdc-checkbox">
+                <input type="checkbox" class="mdc-checkbox__native-control image-select"/>
+                <div class="mdc-checkbox__background">
+                    <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
+                        <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
+                    </svg>
+                </div>
+            </div>
+            <span class="filename mdc-typography--subtitle2"></span>
+        </div>
+
+        <div class="image-preview">
+            <img class="preview-image"/>
+        </div>
+
+        <!-- Image Information -->
+        <div class="image-info">
+            <div class="info-row">
+                <span class="info-label">Original Size:</span>
+                <span class="file-size"></span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Dimensions:</span>
+                <span class="dimensions"></span>
+            </div>
+            <div class="compressed-info hidden">
+                <div class="info-row">
+                    <span class="info-label">Compressed Size:</span>
+                    <span class="compressed-size"></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Space Saved:</span>
+                    <span class="space-saved"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="mdc-button mdc-button--raised compress-button">
+                <span class="mdc-button__ripple"></span>
+                <i class="material-icons mdc-button__icon">compress</i>
+                <span class="mdc-button__label">Compress</span>
+            </button>
+            <button class="mdc-button mdc-button--outlined download-button" disabled>
+                <span class="mdc-button__ripple"></span>
+                <i class="material-icons mdc-button__icon">download</i>
+                <span class="mdc-button__label">Download</span>
+            </button>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="compression-progress hidden">
+            <div class="mdc-linear-progress">
+                <div class="mdc-linear-progress__buffer"></div>
+                <div class="mdc-linear-progress__bar mdc-linear-progress__primary-bar">
+                    <span class="mdc-linear-progress__bar-inner"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

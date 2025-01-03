@@ -1,0 +1,87 @@
+:root {
+    /* Light theme variables */
+    --theme-background: #ffffff;
+    --theme-surface: #ffffff;
+    --theme-primary: #6200ee;
+    --theme-primary-rgb: 98, 0, 238;
+    --theme-secondary: #03dac6;
+    --theme-secondary-rgb: 3, 218, 198;
+    --theme-error: #b00020;
+    --theme-error-rgb: 176, 0, 32;
+    --theme-text-primary: rgba(0, 0, 0, 0.87);
+    --theme-text-secondary: rgba(0, 0, 0, 0.6);
+    --theme-text-hint: rgba(0, 0, 0, 0.38);
+    --theme-border: rgba(0, 0, 0, 0.12);
+    --theme-divider: rgba(0, 0, 0, 0.12);
+    --theme-overlay: rgba(0, 0, 0, 0.5);
+    --theme-card-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+    /* Dark theme variables */
+    --theme-background: #121212;
+    --theme-surface: #1e1e1e;
+    --theme-primary: #bb86fc;
+    --theme-primary-rgb: 187, 134, 252;
+    --theme-secondary: #03dac6;
+    --theme-secondary-rgb: 3, 218, 198;
+    --theme-error: #cf6679;
+    --theme-error-rgb: 207, 102, 121;
+    --theme-text-primary: rgba(255, 255, 255, 0.87);
+    --theme-text-secondary: rgba(255, 255, 255, 0.6);
+    --theme-text-hint: rgba(255, 255, 255, 0.38);
+    --theme-border: rgba(255, 255, 255, 0.12);
+    --theme-divider: rgba(255, 255, 255, 0.12);
+    --theme-overlay: rgba(0, 0, 0, 0.5);
+    --theme-card-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Material Design Component Theme Overrides */
+[data-theme="dark"] {
+    --mdc-theme-primary: var(--theme-primary);
+    --mdc-theme-secondary: var(--theme-secondary);
+    --mdc-theme-background: var(--theme-background);
+    --mdc-theme-surface: var(--theme-surface);
+    --mdc-theme-error: var(--theme-error);
+    --mdc-theme-on-primary: var(--theme-text-primary);
+    --mdc-theme-on-secondary: var(--theme-text-primary);
+    --mdc-theme-on-surface: var(--theme-text-primary);
+    --mdc-theme-text-primary-on-background: var(--theme-text-primary);
+    --mdc-theme-text-secondary-on-background: var(--theme-text-secondary);
+    --mdc-theme-text-hint-on-background: var(--theme-text-hint);
+    --mdc-theme-text-disabled-on-background: var(--theme-text-hint);
+}
+
+/* Apply theming to basic elements */
+body {
+    background-color: var(--theme-background);
+    color: var(--theme-text-primary);
+}
+
+.mdc-card {
+    background-color: var(--theme-surface);
+    box-shadow: var(--theme-card-shadow);
+}
+
+.upload-area {
+    border-color: var(--theme-border);
+}
+
+.preview-image {
+    background-color: var(--theme-surface);
+}
+
+/* Theme-specific adjustments for components */
+[data-theme="dark"] .mdc-text-field--outlined:not(.mdc-text-field--disabled) .mdc-notched-outline__leading,
+[data-theme="dark"] .mdc-text-field--outlined:not(.mdc-text-field--disabled) .mdc-notched-outline__notch,
+[data-theme="dark"] .mdc-text-field--outlined:not(.mdc-text-field--disabled) .mdc-notched-outline__trailing {
+    border-color: var(--theme-border);
+}
+
+[data-theme="dark"] .mdc-text-field--outlined:not(.mdc-text-field--disabled) .mdc-text-field__input {
+    color: var(--theme-text-primary);
+}
+
+[data-theme="dark"] .mdc-select__dropdown-icon {
+    fill: var(--theme-text-primary);
+}

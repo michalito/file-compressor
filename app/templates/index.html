@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="app-layout">
+    <!-- Sidebar Controls -->
+    <div class="sidebar">
+        <!-- Upload Area -->
+        <div class="mdc-card upload-area">
+            <div class="mdc-card__primary-action" tabindex="0">
+                <div class="card-content">
+                    <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff" class="file-input">
+                    <div class="upload-message">
+                        <i class="material-icons">cloud_upload</i>
+                        <p>Drag and drop images here or click to select files</p>
+                        <p class="supported-formats">Supported formats: JPG, PNG, WebP, TIFF</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Global Compression Options -->
+        <div class="mdc-card compression-options">
+            <h2 class="mdc-typography--headline6">Compression Options</h2>
+            <div class="mdc-form-field">
+                <div class="mdc-radio">
+                    <input class="mdc-radio__native-control" type="radio" id="lossless" name="compression-type" value="lossless" checked>
+                    <div class="mdc-radio__background">
+                        <div class="mdc-radio__outer-circle"></div>
+                        <div class="mdc-radio__inner-circle"></div>
+                    </div>
+                </div>
+                <label for="lossless">Lossless (Highest Quality)</label>
+            </div>
+
+            <div class="mdc-form-field">
+                <div class="mdc-radio">
+                    <input class="mdc-radio__native-control" type="radio" id="web" name="compression-type" value="web">
+                    <div class="mdc-radio__background">
+                        <div class="mdc-radio__outer-circle"></div>
+                        <div class="mdc-radio__inner-circle"></div>
+                    </div>
+                </div>
+                <label for="web">Web Optimized (Balanced)</label>
+            </div>
+
+            <div class="mdc-form-field">
+                <div class="mdc-radio">
+                    <input class="mdc-radio__native-control" type="radio" id="high" name="compression-type" value="high">
+                    <div class="mdc-radio__background">
+                        <div class="mdc-radio__outer-circle"></div>
+                        <div class="mdc-radio__inner-circle"></div>
+                    </div>
+                </div>
+                <label for="high">Maximum Compression</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <!-- Preview Area with Batch Controls and Image Tiles -->
+        <div id="preview-area" class="preview-area hidden">
+            <!-- Batch Controls Bar -->
+            <div class="batch-controls mdc-card">
+                <div class="batch-selection">
+                    <div class="mdc-form-field">
+                        <div class="mdc-checkbox">
+                            <input type="checkbox" id="select-all" class="mdc-checkbox__native-control"/>
+                            <div class="mdc-checkbox__background">
+                                <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
+                                    <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <label for="select-all">Select All Images</label>
+                    </div>
+                    <span class="selection-count mdc-typography--caption"></span>
+                </div>
+                
+                <div class="batch-actions">
+                    <button class="mdc-button mdc-button--raised" id="compress-selected" disabled>
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">compress</i>
+                        <span class="mdc-button__label">Compress Selected</span>
+                    </button>
+                    <button class="mdc-button mdc-button--outlined" id="download-selected" disabled>
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">download</i>
+                        <span class="mdc-button__label">Download Selected</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grid Container for Image Tiles -->
+            <div class="preview-grid">
+                {% include 'image_tile_template.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+    // Initialize Material Components
+    window.addEventListener('load', function() {
+        document.querySelectorAll('.mdc-checkbox').forEach(function(element) {
+            new mdc.checkbox.MDCCheckbox(element);
+        });
+        document.querySelectorAll('.mdc-radio').forEach(function(element) {
+            new mdc.radio.MDCRadio(element);
+        });
+        document.querySelectorAll('.mdc-button').forEach(function(element) {
+            new mdc.ripple.MDCRipple(element);
+        });
+    });
+</script>
+{% endblock %}

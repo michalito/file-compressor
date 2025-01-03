@@ -1,0 +1,6 @@
+Flask==2.3.3
+Pillow==10.0.0
+Flask-WTF==1.1.1
+pytest==7.4.2
+python-dotenv==1.0.0
+gunicorn==21.2.0
