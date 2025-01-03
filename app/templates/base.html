@@ -20,22 +20,24 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
 </head>
 <body class="mdc-typography">
-    <header class="mdc-top-app-bar">
-        <div class="mdc-top-app-bar__row">
-            <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-start">
-                <span class="mdc-top-app-bar__title">Image Compressor</span>
-            </section>
-            <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-end">
-                <button id="theme-toggle" class="material-icons mdc-icon-button" aria-label="Toggle theme">
-                    dark_mode
-                </button>
-            </section>
-        </div>
-    </header>
+    <div class="mdc-top-app-bar--fixed-adjust">
+        <header class="mdc-top-app-bar mdc-top-app-bar--fixed">
+            <div class="mdc-top-app-bar__row">
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-start">
+                    <span class="mdc-top-app-bar__title">Image Compressor</span>
+                </section>
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-end">
+                    <button id="theme-toggle" class="material-icons mdc-icon-button" aria-label="Toggle theme">
+                        dark_mode
+                    </button>
+                </section>
+            </div>
+        </header>
 
-    <main class="main-content">
-        {% block content %}{% endblock %}
-    </main>
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}

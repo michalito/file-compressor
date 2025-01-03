@@ -1,4 +1,19 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Material Design Components for top app bar
+    const topAppBar = new mdc.topAppBar.MDCTopAppBar(document.querySelector('.mdc-top-app-bar'));
+    
+    // Add scroll listener for batch controls shadow
+    const batchControls = document.querySelector('.batch-controls');
+    if (batchControls) {
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 64) {
+                batchControls.classList.add('scrolled');
+            } else {
+                batchControls.classList.remove('scrolled');
+            }
+        });
+    }
+
     class ImageCompressor {
         constructor() {
             this.selectedFiles = new Set();
@@ -84,6 +99,7 @@ document.addEventListener('DOMContentLoaded', function() {
             img.onload = () => {
                 tile.querySelector('.dimensions').textContent = 
                     `${img.naturalWidth} × ${img.naturalHeight}px`;
+                URL.revokeObjectURL(img.src); // Clean up the object URL after load
             };
 
             // Setup event listeners
@@ -287,6 +303,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         showError(container, message) {
+            const existingError = container.querySelector('.error-message');
+            if (existingError) {
+                existingError.remove();
+            }
+
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
             errorDiv.innerHTML = `
@@ -297,7 +318,12 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
 
             container.appendChild(errorDiv);
-            setTimeout(() => errorDiv.remove(), 5000);
+            setTimeout(() => {
+                const currentError = container.querySelector('.error-message');
+                if (currentError) {
+                    currentError.remove();
+                }
+            }, 5000);
         }
 
         formatFileSize(bytes) {
@@ -312,6 +338,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tile.querySelectorAll('.mdc-checkbox').forEach(el => new mdc.checkbox.MDCCheckbox(el));
             tile.querySelectorAll('.mdc-button').forEach(el => new mdc.ripple.MDCRipple(el));
             tile.querySelectorAll('.mdc-linear-progress').forEach(el => new mdc.linearProgress.MDCLinearProgress(el));
+            tile.querySelectorAll('.mdc-chip').forEach(el => new mdc.chips.MDCChip(el));
         }
     }
 

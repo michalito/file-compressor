@@ -1,56 +1,97 @@
+/* Reset and Base Styles */
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow-x: hidden;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--theme-background);
+    color: var(--theme-text-primary);
+}
+
+/* Top App Bar Adjustments */
+.mdc-top-app-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100;
+    background-color: var(--theme-surface);
+}
+
+.mdc-top-app-bar--fixed-adjust {
+    padding-top: 64px; /* Height of the top app bar */
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
 /* App Layout */
 .app-layout {
     display: flex;
     gap: 2rem;
     max-width: 1600px;
     margin: 0 auto;
-    padding: 1rem;
-    height: calc(100vh - var(--mdc-top-app-bar-dense-row-height));
+    padding: 2rem;
+    min-height: calc(100vh - 64px); /* Subtract top app bar height */
+    width: 100%;
+    box-sizing: border-box;
 }
 
-/* Sidebar */
+/* Sidebar Improvements */
 .sidebar {
     position: sticky;
-    top: 1rem;
-    width: 300px;
+    top: calc(64px + 2rem); /* Top app bar height + padding */
+    width: 320px;
     flex-shrink: 0;
     height: fit-content;
-    max-height: calc(100vh - 2rem);
+    max-height: calc(100vh - 96px); /* Account for top bar and padding */
     overflow-y: auto;
     padding-right: 1rem;
-    /* Hide scrollbar but keep functionality */
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: thin;
+    scrollbar-color: var(--theme-primary) transparent;
 }
 
 .sidebar::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background-color: var(--theme-primary);
+    border-radius: 3px;
 }
 
 /* Main Content Area */
 .main-content {
     flex: 1;
-    min-width: 0; /* Prevents flex item from overflowing */
+    min-width: 0;
+    padding: 0 1rem;
 }
 
-/* Upload Area */
+/* Upload Area Enhancement */
 .upload-area {
-    border: 2px dashed var(--mdc-theme-primary);
+    border: 2px dashed var(--theme-primary);
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 2rem;
     text-align: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
     height: 200px;
     display: flex;
     align-items: center;
     justify-content: center;
+    background-color: var(--theme-surface);
 }
 
 .upload-area.dragover {
-    background-color: rgba(var(--mdc-theme-primary-rgb), 0.1);
+    background-color: rgba(var(--theme-primary-rgb), 0.1);
     border-style: solid;
+    transform: scale(1.02);
 }
 
 .upload-message {
@@ -62,22 +103,19 @@
 
 .upload-message i {
     font-size: 36px;
-    color: var(--mdc-theme-primary);
+    color: var(--theme-primary);
 }
 
 .file-input {
     display: none;
 }
 
-.supported-formats {
-    font-size: 0.75rem;
-    color: var(--mdc-theme-text-secondary-on-background);
-}
-
 /* Compression Options */
 .compression-options {
     padding: 1.5rem;
-    background-color: var(--mdc-theme-surface);
+    background-color: var(--theme-surface);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
 }
 
 .compression-options h2 {
@@ -91,61 +129,30 @@
     padding: 0.5rem 0;
 }
 
-/* Preview Area */
-.preview-area {
-    width: 100%;
-}
-
-.preview-area.hidden {
-    display: none;
-}
-
-/* Batch Controls */
-.batch-controls {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    background-color: var(--mdc-theme-surface);
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.batch-selection {
-    display: flex;
-    align-items: center;
-}
-
-.selection-count {
-    margin-left: 1rem;
-    color: var(--mdc-theme-text-secondary-on-background);
-}
-
-.batch-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-/* Preview Grid */
+/* Preview Grid Improvements */
 .preview-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    padding: 1rem 0;
 }
 
-/* Preview Tile */
+/* Preview Tile Enhancements */
 .preview-tile {
-    background-color: var(--mdc-theme-surface);
-    border-radius: 4px;
+    background-color: var(--theme-surface);
+    border-radius: 8px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    padding: 1rem;
+    padding: 1.5rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: var(--theme-card-shadow);
+}
+
+.preview-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .preview-header {
@@ -166,7 +173,7 @@
     position: relative;
     width: 100%;
     height: 200px;
-    background-color: var(--mdc-theme-background);
+    background-color: var(--theme-background);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -179,7 +186,7 @@
 
 /* Image Information */
 .image-info {
-    background-color: var(--mdc-theme-background);
+    background-color: var(--theme-background);
     border-radius: 4px;
     padding: 0.75rem;
 }
@@ -191,62 +198,70 @@
 }
 
 .info-label {
-    color: var(--mdc-theme-text-secondary-on-background);
+    color: var(--theme-text-secondary);
     font-size: 0.875rem;
 }
 
 .compressed-info {
     margin-top: 0.5rem;
     padding-top: 0.5rem;
-    border-top: 1px solid var(--mdc-theme-text-hint-on-background);
+    border-top: 1px solid var(--theme-text-hint);
 }
 
 .compressed-info.hidden {
     display: none;
 }
 
-/* Action Buttons */
-.action-buttons {
+/* Batch Controls Enhancement */
+.batch-controls {
+    position: sticky;
+    top: 64px; /* Match top app bar height */
+    z-index: 90;
+    padding: 1rem 1.5rem;
+    margin: 0 -1rem 1.5rem -1rem;
+    background-color: var(--theme-surface);
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: box-shadow 0.3s ease;
+}
+
+.batch-controls.scrolled {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.batch-selection {
+    display: flex;
+    align-items: center;
+}
+
+.selection-count {
+    margin-left: 1rem;
+    color: var(--theme-text-secondary);
+}
+
+.batch-actions {
     display: flex;
     gap: 0.5rem;
 }
 
-/* Progress Bar */
-.compression-progress {
-    margin: 0.5rem 0;
-}
-
-.compression-progress.hidden {
-    display: none;
-}
-
-/* Messages */
-.warning-message {
-    margin-top: 0.5rem;
-    padding: 0.5rem;
-    border-radius: 4px;
-    background-color: rgba(var(--mdc-theme-secondary-rgb), 0.1);
-}
-
-.error-message {
-    margin-top: 0.5rem;
-    padding: 0.5rem;
-    border-radius: 4px;
-    background-color: rgba(var(--mdc-theme-error-rgb), 0.1);
-    color: var(--mdc-theme-error);
-}
-
-/* Material Design Component Customizations */
+/* Button Improvements */
 .mdc-button {
     height: 36px;
+    min-width: 120px;
+    padding: 0 16px;
+    transition: all 0.2s ease;
 }
 
 .mdc-button--raised {
-    background-color: var(--mdc-theme-primary);
+    background-color: var(--theme-primary);
 }
 
-.mdc-button--outlined {
-    border-color: var(--mdc-theme-primary);
+.mdc-button--raised:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .mdc-button:disabled {
@@ -254,50 +269,72 @@
     cursor: not-allowed;
 }
 
-.mdc-checkbox__background {
-    border-color: var(--mdc-theme-primary);
+/* Progress Bar Enhancement */
+.compression-progress {
+    margin: 1rem 0;
 }
 
-.mdc-linear-progress__bar-inner {
-    border-color: var(--mdc-theme-primary);
+.compression-progress.hidden {
+    display: none;
 }
 
-/* Animations */
-@keyframes progress {
-    0% {
-        transform: translateX(-100%);
+.mdc-linear-progress {
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+/* Messages */
+.warning-message,
+.error-message {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.warning-message {
+    background-color: rgba(var(--theme-secondary-rgb), 0.1);
+}
+
+.error-message {
+    background-color: rgba(var(--theme-error-rgb), 0.1);
+    color: var(--theme-error);
+}
+
+/* Responsive Design Improvements */
+@media (max-width: 1200px) {
+    .app-layout {
+        padding: 1.5rem;
+        gap: 1.5rem;
     }
-    100% {
-        transform: translateX(400%);
+    
+    .sidebar {
+        width: 280px;
     }
 }
 
-/* Responsive Design */
 @media (max-width: 960px) {
     .app-layout {
         flex-direction: column;
-        height: auto;
+        padding: 1rem;
     }
 
     .sidebar {
-        position: static;
+        position: relative;
+        top: 0;
         width: 100%;
         max-height: none;
         padding-right: 0;
-        margin-bottom: 1rem;
-    }
-
-    .upload-area {
-        height: 150px;
-    }
-
-    .main-content {
-        padding: 0;
+        margin-bottom: 2rem;
     }
 
     .batch-controls {
+        position: sticky;
+        top: 64px;
         flex-direction: column;
         gap: 1rem;
+        padding: 1rem;
     }
 
     .batch-selection {
@@ -311,25 +348,65 @@
     }
 
     .preview-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
     }
 
     .action-buttons {
         flex-direction: column;
+        gap: 0.5rem;
     }
 }
 
-/* Dark Theme Support */
-[data-theme="dark"] .preview-tile {
+@media (max-width: 600px) {
+    .app-layout {
+        padding: 0.5rem;
+    }
+
+    .preview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .upload-area {
+        height: 150px;
+        padding: 1rem;
+    }
+
+    .batch-controls {
+        margin: 0 -0.5rem 1rem -0.5rem;
+    }
+
+    .mdc-button {
+        width: 100%;
+    }
+}
+
+/* Animation Enhancements */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.preview-tile {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Dark Theme Specific Adjustments */
+[data-theme="dark"] .mdc-top-app-bar {
     background-color: var(--theme-surface);
 }
 
-[data-theme="dark"] .image-preview {
-    background-color: var(--theme-background);
+[data-theme="dark"] .batch-controls {
+    background-color: var(--theme-surface);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-[data-theme="dark"] .image-info {
-    background-color: var(--theme-background);
+[data-theme="dark"] .preview-tile {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .upload-area {
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
 /* Utility Classes */

@@ -1,6 +1,6 @@
 :root {
     /* Light theme variables */
-    --theme-background: #ffffff;
+    --theme-background: #f5f5f5;
     --theme-surface: #ffffff;
     --theme-primary: #6200ee;
     --theme-primary-rgb: 98, 0, 238;
@@ -15,6 +15,20 @@
     --theme-divider: rgba(0, 0, 0, 0.12);
     --theme-overlay: rgba(0, 0, 0, 0.5);
     --theme-card-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+    /* MDC Theme overrides for light theme */
+    --mdc-theme-primary: var(--theme-primary);
+    --mdc-theme-secondary: var(--theme-secondary);
+    --mdc-theme-background: var(--theme-background);
+    --mdc-theme-surface: var(--theme-surface);
+    --mdc-theme-error: var(--theme-error);
+    --mdc-theme-on-primary: #ffffff;
+    --mdc-theme-on-secondary: #000000;
+    --mdc-theme-on-surface: var(--theme-text-primary);
+    --mdc-theme-text-primary-on-background: var(--theme-text-primary);
+    --mdc-theme-text-secondary-on-background: var(--theme-text-secondary);
+    --mdc-theme-text-hint-on-background: var(--theme-text-hint);
+    --mdc-theme-text-disabled-on-background: var(--theme-text-hint);
 }
 
 [data-theme="dark"] {
@@ -34,10 +48,8 @@
     --theme-divider: rgba(255, 255, 255, 0.12);
     --theme-overlay: rgba(0, 0, 0, 0.5);
     --theme-card-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
 
-/* Material Design Component Theme Overrides */
-[data-theme="dark"] {
+    /* MDC Theme overrides for dark theme */
     --mdc-theme-primary: var(--theme-primary);
     --mdc-theme-secondary: var(--theme-secondary);
     --mdc-theme-background: var(--theme-background);
@@ -56,6 +68,20 @@
 body {
     background-color: var(--theme-background);
     color: var(--theme-text-primary);
+}
+
+/* Top App Bar specific styling */
+.mdc-top-app-bar {
+    background-color: var(--theme-primary) !important;
+    color: var(--mdc-theme-on-primary) !important;
+}
+
+.mdc-top-app-bar__title {
+    color: var(--mdc-theme-on-primary);
+}
+
+#theme-toggle {
+    color: var(--mdc-theme-on-primary);
 }
 
 .mdc-card {
