@@ -42,7 +42,7 @@ body {
     box-sizing: border-box;
 }
 
-/* Sidebar Improvements */
+/* Sidebar */
 .sidebar {
     position: sticky;
     top: calc(64px + 2rem); /* Top app bar height + padding */
@@ -72,7 +72,7 @@ body {
     padding: 0 1rem;
 }
 
-/* Upload Area Enhancement */
+/* Upload Area */
 .upload-area {
     border: 2px dashed var(--theme-primary);
     border-radius: 8px;
@@ -110,26 +110,133 @@ body {
     display: none;
 }
 
-/* Compression Options */
-.compression-options {
+/* Settings Panels */
+.settings-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.settings-summary {
     padding: 1.5rem;
     background-color: var(--theme-surface);
     border-radius: 8px;
-    margin-bottom: 1.5rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.compression-options h2 {
+.settings-summary:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--theme-card-shadow);
+}
+
+.settings-summary h2 {
     margin: 0 0 1rem 0;
     font-size: 1.1rem;
+    color: var(--theme-text-primary);
 }
 
-.compression-options .mdc-form-field {
-    display: block;
-    margin: 1rem 0;
-    padding: 0.5rem 0;
+.current-settings {
+    margin-bottom: 1rem;
 }
 
-/* Preview Grid Improvements */
+.setting-value {
+    margin: 0.25rem 0;
+    color: var(--theme-text-secondary);
+    font-size: 0.875rem;
+}
+
+.setting-value span {
+    color: var(--theme-text-primary);
+    font-weight: 500;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modal-overlay.hidden {
+    display: none;
+}
+
+.modal-content {
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background-color: var(--theme-surface);
+    border-radius: 8px;
+    padding: 1.5rem;
+    animation: slideIn 0.2s ease-out;
+}
+
+.modal-body {
+    margin: 1.5rem 0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--theme-border);
+}
+
+/* Custom Size Controls */
+.custom-size-controls {
+    margin-top: 1rem;
+    padding-left: 2.5rem;
+}
+
+.custom-size-controls.hidden {
+    display: none;
+}
+
+.dimension-input {
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.dimension-input .mdc-text-field {
+    width: 100%;
+}
+
+.dimension-input .mdc-text-field input {
+    text-align: right;
+}
+
+/* Size Presets */
+.size-presets {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--theme-border);
+    padding-top: 1rem;
+}
+
+.preset-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.preset-buttons .mdc-button {
+    flex: 1;
+    min-width: 100px;
+    font-size: 0.875rem;
+}
+
+/* Preview Grid */
 .preview-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -137,7 +244,7 @@ body {
     padding: 1rem 0;
 }
 
-/* Preview Tile Enhancements */
+/* Preview Tile */
 .preview-tile {
     background-color: var(--theme-surface);
     border-radius: 8px;
@@ -148,6 +255,7 @@ body {
     padding: 1.5rem;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     box-shadow: var(--theme-card-shadow);
+    animation: fadeIn 0.3s ease-out;
 }
 
 .preview-tile:hover {
@@ -212,10 +320,10 @@ body {
     display: none;
 }
 
-/* Batch Controls Enhancement */
+/* Batch Controls */
 .batch-controls {
     position: sticky;
-    top: 64px; /* Match top app bar height */
+    top: 64px;
     z-index: 90;
     padding: 1rem 1.5rem;
     margin: 0 -1rem 1.5rem -1rem;
@@ -247,7 +355,7 @@ body {
     gap: 0.5rem;
 }
 
-/* Button Improvements */
+/* Buttons */
 .mdc-button {
     height: 36px;
     min-width: 120px;
@@ -269,7 +377,7 @@ body {
     cursor: not-allowed;
 }
 
-/* Progress Bar Enhancement */
+/* Progress Bar */
 .compression-progress {
     margin: 1rem 0;
 }
@@ -302,7 +410,51 @@ body {
     color: var(--theme-error);
 }
 
-/* Responsive Design Improvements */
+/* Modal Animations */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Dark Theme Adjustments */
+[data-theme="dark"] .mdc-top-app-bar {
+    background-color: var(--theme-surface);
+}
+
+[data-theme="dark"] .batch-controls {
+    background-color: var(--theme-surface);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .preview-tile {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .upload-area {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .modal-overlay {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .status-indicator {
+    background-color: var(--theme-surface);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* Media Queries */
 @media (max-width: 1200px) {
     .app-layout {
         padding: 1.5rem;
@@ -344,7 +496,13 @@ body {
 
     .batch-actions {
         width: 100%;
-        flex-direction: column;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .batch-actions .mdc-button {
+        flex: 1;
+        min-width: 150px;
     }
 
     .preview-grid {
@@ -355,6 +513,146 @@ body {
     .action-buttons {
         flex-direction: column;
         gap: 0.5rem;
+    }
+
+    .preset-buttons {
+        flex-direction: row;
+    }
+    
+    .preset-buttons .mdc-button {
+        flex: 1;
+    }
+
+    .modal-content {
+        width: calc(100% - 2rem);
+        margin: 1rem;
+        max-height: calc(100vh - 2rem);
+    }
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+.compact-button {
+    min-width: 40px !important;
+    width: 40px;
+    height: 40px !important;
+    padding: 0 !important;
+    transition: all 0.2s ease !important;
+    overflow: hidden;
+    border-radius: 20px !important;
+}
+
+.compact-button .button-text {
+    max-width: 0;
+    opacity: 0;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    font-size: 14px;
+    letter-spacing: 0.2px;
+}
+
+.compact-button:hover {
+    width: 120px; /* Increased width for better text fit */
+    padding: 0 16px !important;
+}
+
+.compact-button:hover .button-text {
+    max-width: 90px;
+    opacity: 1;
+    margin-left: 6px;
+}
+
+.compact-button .mdc-button__icon {
+    font-size: 20px !important; /* Added smaller icon size */
+    margin: 0 !important;
+    transition: margin 0.2s ease;
+}
+
+.compact-button:hover .mdc-button__icon {
+    margin-right: 0 !important;
+}
+
+/* Processing Status Indicators */
+.processing-status {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+}
+
+.status-indicator {
+    background-color: var(--theme-surface);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.3s ease;
+}
+
+.status-indicator.show {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.status-indicator i {
+    font-size: 18px;
+    color: var(--theme-primary);
+}
+
+.status-indicator.compressed {
+    background-color: var(--theme-primary);
+}
+
+.status-indicator.compressed i {
+    color: white;
+}
+
+.status-indicator.resized {
+    background-color: var(--theme-secondary);
+}
+
+.status-indicator.resized i {
+    color: white;
+}
+
+/* Adjusted mobile styles */
+@media (max-width: 600px) {
+    .action-buttons {
+        justify-content: center;
+    }
+    
+    .compact-button {
+        /* Keep buttons compact even on mobile */
+        flex: 0;
+        width: 40px;
+        min-width: 40px !important;
+    }
+    
+    .compact-button .button-text {
+        /* Keep text hidden on mobile */
+        max-width: 0;
+        opacity: 0;
+    }
+    
+    .compact-button:hover {
+        /* Allow expansion on mobile hover */
+        width: 110px;
+    }
+    
+    .compact-button:hover .button-text {
+        max-width: 80px;
+        opacity: 1;
     }
 }
 
@@ -379,34 +677,14 @@ body {
     .mdc-button {
         width: 100%;
     }
-}
 
-/* Animation Enhancements */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.preview-tile {
-    animation: fadeIn 0.3s ease-out;
-}
-
-/* Dark Theme Specific Adjustments */
-[data-theme="dark"] .mdc-top-app-bar {
-    background-color: var(--theme-surface);
-}
-
-[data-theme="dark"] .batch-controls {
-    background-color: var(--theme-surface);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .preview-tile {
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .upload-area {
-    background-color: rgba(255, 255, 255, 0.05);
+    .modal-content {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        max-height: none;
+        border-radius: 0;
+    }
 }
 
 /* Utility Classes */

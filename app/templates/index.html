@@ -18,9 +18,90 @@
             </div>
         </div>
 
-        <!-- Global Compression Options -->
-        <div class="mdc-card compression-options">
-            <h2 class="mdc-typography--headline6">Compression Options</h2>
+        <!-- Settings Panels -->
+        <div class="settings-panels">
+            <!-- Compression Settings Summary -->
+            <div class="mdc-card settings-summary compression-summary">
+                <h2 class="mdc-typography--headline6">Compression Settings</h2>
+                <div class="current-settings">
+                    <p class="setting-value">Mode: <span id="compression-mode-display">Lossless</span></p>
+                </div>
+                <button class="mdc-button mdc-button--outlined" id="open-compression-settings">
+                    <span class="mdc-button__ripple"></span>
+                    <i class="material-icons mdc-button__icon">settings</i>
+                    <span class="mdc-button__label">Configure</span>
+                </button>
+            </div>
+
+            <!-- Resize Settings Summary -->
+            <div class="mdc-card settings-summary resize-summary">
+                <h2 class="mdc-typography--headline6">Resize Settings</h2>
+                <div class="current-settings">
+                    <p class="setting-value">Size: <span id="resize-mode-display">Original Size</span></p>
+                    <p class="setting-value custom-size-display hidden">Dimensions: <span id="resize-dimensions-display"></span></p>
+                </div>
+                <button class="mdc-button mdc-button--outlined" id="open-resize-settings">
+                    <span class="mdc-button__ripple"></span>
+                    <i class="material-icons mdc-button__icon">settings</i>
+                    <span class="mdc-button__label">Configure</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <!-- Preview Area with Batch Controls and Image Tiles -->
+        <div id="preview-area" class="preview-area hidden">
+            <!-- Batch Controls Bar -->
+            <div class="batch-controls mdc-card">
+                <div class="batch-selection">
+                    <div class="mdc-form-field">
+                        <div class="mdc-checkbox">
+                            <input type="checkbox" id="select-all" class="mdc-checkbox__native-control"/>
+                            <div class="mdc-checkbox__background">
+                                <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
+                                    <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <label for="select-all">Select All Images</label>
+                    </div>
+                    <span class="selection-count mdc-typography--caption"></span>
+                </div>
+                
+                <div class="batch-actions">
+                    <button class="mdc-button mdc-button--raised" id="compress-selected" disabled>
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">compress</i>
+                        <span class="mdc-button__label">Compress Selected</span>
+                    </button>
+                    <button class="mdc-button mdc-button--outlined" id="resize-selected" disabled>
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">photo_size_select_large</i>
+                        <span class="mdc-button__label">Resize Selected</span>
+                    </button>
+                    <button class="mdc-button mdc-button--outlined" id="download-selected" disabled>
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">download</i>
+                        <span class="mdc-button__label">Download Selected</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grid Container for Image Tiles -->
+            <div class="preview-grid">
+                {% include 'image_tile_template.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<div class="modal-overlay hidden" id="compression-modal">
+    <div class="mdc-card modal-content">
+        <h2 class="mdc-typography--headline6">Compression Settings</h2>
+        <div class="modal-body">
             <div class="mdc-form-field">
                 <div class="mdc-radio">
                     <input class="mdc-radio__native-control" type="radio" id="lossless" name="compression-type" value="lossless" checked>
@@ -54,47 +135,109 @@
                 <label for="high">Maximum Compression</label>
             </div>
         </div>
+        <div class="modal-actions">
+            <button class="mdc-button" id="close-compression-modal">
+                <span class="mdc-button__ripple"></span>
+                <span class="mdc-button__label">Cancel</span>
+            </button>
+            <button class="mdc-button mdc-button--raised" id="save-compression-settings">
+                <span class="mdc-button__ripple"></span>
+                <span class="mdc-button__label">Save Settings</span>
+            </button>
+        </div>
     </div>
+</div>
 
-    <!-- Main Content Area -->
-    <div class="main-content">
-        <!-- Preview Area with Batch Controls and Image Tiles -->
-        <div id="preview-area" class="preview-area hidden">
-            <!-- Batch Controls Bar -->
-            <div class="batch-controls mdc-card">
-                <div class="batch-selection">
-                    <div class="mdc-form-field">
-                        <div class="mdc-checkbox">
-                            <input type="checkbox" id="select-all" class="mdc-checkbox__native-control"/>
-                            <div class="mdc-checkbox__background">
-                                <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
-                                    <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <label for="select-all">Select All Images</label>
+<div class="modal-overlay hidden" id="resize-modal">
+    <div class="mdc-card modal-content">
+        <h2 class="mdc-typography--headline6">Resize Settings</h2>
+        <div class="modal-body">
+            <div class="mdc-form-field">
+                <div class="mdc-radio">
+                    <input class="mdc-radio__native-control" type="radio" id="original-size" name="resize-type" value="original" checked>
+                    <div class="mdc-radio__background">
+                        <div class="mdc-radio__outer-circle"></div>
+                        <div class="mdc-radio__inner-circle"></div>
                     </div>
-                    <span class="selection-count mdc-typography--caption"></span>
                 </div>
-                
-                <div class="batch-actions">
-                    <button class="mdc-button mdc-button--raised" id="compress-selected" disabled>
-                        <span class="mdc-button__ripple"></span>
-                        <i class="material-icons mdc-button__icon">compress</i>
-                        <span class="mdc-button__label">Compress Selected</span>
-                    </button>
-                    <button class="mdc-button mdc-button--outlined" id="download-selected" disabled>
-                        <span class="mdc-button__ripple"></span>
-                        <i class="material-icons mdc-button__icon">download</i>
-                        <span class="mdc-button__label">Download Selected</span>
-                    </button>
-                </div>
+                <label for="original-size">Keep Original Size</label>
             </div>
 
-            <!-- Grid Container for Image Tiles -->
-            <div class="preview-grid">
-                {% include 'image_tile_template.html' %}
+            <div class="mdc-form-field">
+                <div class="mdc-radio">
+                    <input class="mdc-radio__native-control" type="radio" id="custom-size" name="resize-type" value="custom">
+                    <div class="mdc-radio__background">
+                        <div class="mdc-radio__outer-circle"></div>
+                        <div class="mdc-radio__inner-circle"></div>
+                    </div>
+                </div>
+                <label for="custom-size">Custom Size</label>
             </div>
+
+            <div class="custom-size-controls hidden">
+                <div class="dimension-input">
+                    <label class="mdc-text-field mdc-text-field--outlined">
+                        <span class="mdc-notched-outline">
+                            <span class="mdc-notched-outline__leading"></span>
+                            <span class="mdc-notched-outline__notch">
+                                <span class="mdc-floating-label">Width (px)</span>
+                            </span>
+                            <span class="mdc-notched-outline__trailing"></span>
+                        </span>
+                        <input type="number" id="custom-width" class="mdc-text-field__input" min="1" max="8000">
+                    </label>
+                </div>
+                <div class="dimension-input">
+                    <label class="mdc-text-field mdc-text-field--outlined">
+                        <span class="mdc-notched-outline">
+                            <span class="mdc-notched-outline__leading"></span>
+                            <span class="mdc-notched-outline__notch">
+                                <span class="mdc-floating-label">Height (px)</span>
+                            </span>
+                            <span class="mdc-notched-outline__trailing"></span>
+                        </span>
+                        <input type="number" id="custom-height" class="mdc-text-field__input" min="1" max="8000">
+                    </label>
+                </div>
+
+                <div class="mdc-form-field">
+                    <div class="mdc-checkbox">
+                        <input type="checkbox" class="mdc-checkbox__native-control" id="maintain-aspect-ratio" checked/>
+                        <div class="mdc-checkbox__background">
+                            <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
+                                <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <label for="maintain-aspect-ratio">Maintain aspect ratio</label>
+                </div>
+
+                <!-- Size Presets -->
+                <div class="size-presets">
+                    <span class="mdc-typography--subtitle2">Common Sizes:</span>
+                    <div class="preset-buttons">
+                        <button class="mdc-button" data-width="1920" data-height="1080">
+                            <span class="mdc-button__label">1920×1080</span>
+                        </button>
+                        <button class="mdc-button" data-width="1280" data-height="720">
+                            <span class="mdc-button__label">1280×720</span>
+                        </button>
+                        <button class="mdc-button" data-width="800" data-height="600">
+                            <span class="mdc-button__label">800×600</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="mdc-button" id="close-resize-modal">
+                <span class="mdc-button__ripple"></span>
+                <span class="mdc-button__label">Cancel</span>
+            </button>
+            <button class="mdc-button mdc-button--raised" id="save-resize-settings">
+                <span class="mdc-button__ripple"></span>
+                <span class="mdc-button__label">Save Settings</span>
+            </button>
         </div>
     </div>
 </div>
@@ -113,6 +256,9 @@
         });
         document.querySelectorAll('.mdc-button').forEach(function(element) {
             new mdc.ripple.MDCRipple(element);
+        });
+        document.querySelectorAll('.mdc-text-field').forEach(function(element) {
+            new mdc.textField.MDCTextField(element);
         });
     });
 </script>

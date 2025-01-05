@@ -1,6 +1,6 @@
 <template id="image-tile-template">
     <div class="preview-tile mdc-card">
-        <!-- Image Preview Section -->
+        <!-- Image Header with Selection -->
         <div class="preview-header">
             <div class="mdc-checkbox">
                 <input type="checkbox" class="mdc-checkbox__native-control image-select"/>
@@ -13,8 +13,17 @@
             <span class="filename mdc-typography--subtitle2"></span>
         </div>
 
+        <!-- Image Preview with Status -->
         <div class="image-preview">
-            <img class="preview-image"/>
+            <img class="preview-image" alt="Preview"/>
+            <div class="processing-status">
+                <div class="status-indicator compressed hidden" title="Image Compressed">
+                    <i class="material-icons">compress</i>
+                </div>
+                <div class="status-indicator resized hidden" title="Image Resized">
+                    <i class="material-icons">photo_size_select_large</i>
+                </div>
+            </div>
         </div>
 
         <!-- Image Information -->
@@ -27,6 +36,8 @@
                 <span class="info-label">Dimensions:</span>
                 <span class="dimensions"></span>
             </div>
+            
+            <!-- Compression Results (Hidden by default) -->
             <div class="compressed-info hidden">
                 <div class="info-row">
                     <span class="info-label">Compressed Size:</span>
@@ -39,21 +50,7 @@
             </div>
         </div>
 
-        <!-- Action Buttons -->
-        <div class="action-buttons">
-            <button class="mdc-button mdc-button--raised compress-button">
-                <span class="mdc-button__ripple"></span>
-                <i class="material-icons mdc-button__icon">compress</i>
-                <span class="mdc-button__label">Compress</span>
-            </button>
-            <button class="mdc-button mdc-button--outlined download-button" disabled>
-                <span class="mdc-button__ripple"></span>
-                <i class="material-icons mdc-button__icon">download</i>
-                <span class="mdc-button__label">Download</span>
-            </button>
-        </div>
-
-        <!-- Progress Bar -->
+        <!-- Processing Progress Bar (Hidden by default) -->
         <div class="compression-progress hidden">
             <div class="mdc-linear-progress">
                 <div class="mdc-linear-progress__buffer"></div>
@@ -61,6 +58,27 @@
                     <span class="mdc-linear-progress__bar-inner"></span>
                 </div>
             </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="mdc-button mdc-button--raised compact-button compress-button" aria-label="Compress Image">
+                <span class="mdc-button__ripple"></span>
+                <i class="material-icons mdc-button__icon">compress</i>
+                <span class="button-text">Compress</span>
+            </button>
+            
+            <button class="mdc-button mdc-button--outlined compact-button resize-button" aria-label="Resize Image">
+                <span class="mdc-button__ripple"></span>
+                <i class="material-icons mdc-button__icon">aspect_ratio</i>
+                <span class="button-text">Resize</span>
+            </button>
+
+            <button class="mdc-button mdc-button--outlined compact-button download-button" disabled aria-label="Download Image">
+                <span class="mdc-button__ripple"></span>
+                <i class="material-icons mdc-button__icon">download</i>
+                <span class="button-text">Save</span>
+            </button>
         </div>
     </div>
 </template>

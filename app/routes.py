@@ -96,6 +96,67 @@ def download_file():
         current_app.logger.error(f"Download failed: {str(e)}")
         return jsonify({'error': 'Download failed'}), 500
 
+@main.route('/resize', methods=['POST'])
+def resize_image():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+        
+    if file and file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.tiff')):
+        try:
+            # Read the uploaded file
+            image_data = file.read()
+            
+            # Get resize parameters
+            max_width = request.form.get('max_width', type=int)
+            max_height = request.form.get('max_height', type=int)
+            
+            # If neither dimension is specified, return original
+            if not max_width and not max_height:
+                return jsonify({
+                    'message': 'No resize needed',
+                    'resized_data': image_data.hex(),
+                    'filename': secure_filename(file.filename),
+                    'metadata': {
+                        'final_dimensions': Image.open(io.BytesIO(image_data)).size
+                    }
+                }), 200
+            
+            # Validate the image
+            validation = compressor.validate_image(image_data)
+            if not validation.is_valid:
+                return jsonify({
+                    'error': 'Image validation failed',
+                    'details': validation.errors,
+                    'warnings': validation.warnings
+                }), 400
+            
+            # Resize the image
+            img = Image.open(io.BytesIO(image_data))
+            resized_img = compressor._resize_image(img, max_width, max_height)
+            
+            # Save to bytes
+            output_buffer = io.BytesIO()
+            resized_img.save(output_buffer, format=img.format)
+            resized_data = output_buffer.getvalue()
+            
+            return jsonify({
+                'message': 'File resized successfully',
+                'resized_data': resized_data.hex(),
+                'filename': secure_filename(file.filename),
+                'metadata': {
+                    'final_dimensions': resized_img.size
+                }
+            }), 200
+            
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        
+    return jsonify({'error': 'Invalid file type'}), 400
+
 @main.route('/theme', methods=['POST'])
 def toggle_theme():
     theme = request.json.get('theme')
