@@ -125,7 +125,6 @@ def resize_image():
                 }), 400
 
             # Use the compressor's methods to handle the resize
-            # We'll use 'lossless' mode to maintain quality
             compressed_data, metadata = compressor.compress_image(
                 image_data,
                 'lossless',
@@ -133,13 +132,18 @@ def resize_image():
                 max_height
             )
             
+            # Ensure metadata has all required fields
+            metadata.update({
+                'original_size': len(image_data),
+                'compressed_size': len(compressed_data)
+            })
+            
             return jsonify({
                 'message': 'File resized successfully',
                 'resized_data': compressed_data.hex(),
                 'filename': secure_filename(file.filename),
-                'metadata': {
-                    'final_dimensions': metadata['final_dimensions']
-                }
+                'metadata': metadata,
+                'warnings': validation.warnings
             }), 200
             
         except Exception as e:

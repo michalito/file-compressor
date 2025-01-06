@@ -626,6 +626,39 @@ body {
     color: white;
 }
 
+.info-section-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--theme-primary);
+    margin: 0.5rem 0;
+}
+
+.space-saved-banner {
+    background-color: var(--theme-primary);
+    color: white;
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.space-saved-banner i {
+    font-size: 1.2rem;
+}
+
+.processed-info {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--theme-border);
+}
+
+.processed-info.hidden {
+    display: none;
+}
+
 /* Adjusted mobile styles */
 @media (max-width: 600px) {
     .action-buttons {

@@ -386,52 +386,77 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Store the original file reference
             container.dataset.originalFile = file.name;
-
+        
             // Set up image preview and basic info
-            const img = tile.querySelector('.preview-image');
-            img.src = URL.createObjectURL(file);
-            tile.querySelector('.filename').textContent = file.name;
-            tile.querySelector('.file-size').textContent = this.formatFileSize(file.size);
-
-            // Set dimensions when image loads
+            const img = new Image(); 
             img.onload = () => {
-                tile.querySelector('.dimensions').textContent = 
+                // Update the preview image
+                const previewImg = container.querySelector('.preview-image');
+                previewImg.src = img.src;
+                
+                // Calculate aspect ratio
+                const aspectRatio = (img.naturalWidth / img.naturalHeight).toFixed(2);
+                
+                // Update dimensions and aspect ratio
+                container.querySelector('.dimensions').textContent = 
                     `${img.naturalWidth} × ${img.naturalHeight}px`;
+                container.querySelector('.aspect-ratio').textContent = aspectRatio;
+                
+                // Cleanup
                 URL.revokeObjectURL(img.src);
             };
-
-            // Setup event listeners
-            this.setupTileControls(tile, file);
+            
+            // Set the source after defining onload
+            img.src = URL.createObjectURL(file);
+            
+            // Set other info
+            container.querySelector('.filename').textContent = file.name;
+            container.querySelector('.file-size').textContent = this.formatFileSize(file.size);
+        
+            // Add to document
             document.querySelector('.preview-grid').appendChild(tile);
-
+        
+            // Get the actually appended container
+            const appendedContainer = document.querySelector(`[data-original-file="${file.name}"]`);
+        
+            // Setup event listeners
+            this.setupTileControls(appendedContainer, file);
+        
             // Initialize MDC components
-            this.initializeMDCComponents(tile);
+            this.initializeMDCComponents(appendedContainer);
         }
 
         setupTileControls(tile, file) {
-            const container = tile.querySelector('.preview-tile');
+            // The tile passed in is already the preview-tile container
+            const container = tile;  // tile is already the .preview-tile element
             
             // Compress button
             const compressButton = container.querySelector('.compress-button');
-            compressButton.addEventListener('click', () => this.compressImage(container, file));
-
+            if (compressButton) {
+                compressButton.addEventListener('click', () => this.compressImage(container, file));
+            }
+        
             // Resize button
             const resizeButton = container.querySelector('.resize-button');
             if (resizeButton) {
                 resizeButton.addEventListener('click', () => this.resizeImage(container, file));
             }
-
+        
             // Selection checkbox
             const checkbox = container.querySelector('.image-select');
-            checkbox.addEventListener('change', () => {
-                this.updateFileSelection(checkbox);
-                this.updateBatchButtons();
-                this.updateSelectionCount();
-            });
-
+            if (checkbox) {
+                checkbox.addEventListener('change', () => {
+                    this.updateFileSelection(checkbox);
+                    this.updateBatchButtons();
+                    this.updateSelectionCount();
+                });
+            }
+        
             // Download button
             const downloadButton = container.querySelector('.download-button');
-            downloadButton.addEventListener('click', () => this.downloadCompressedFile(container));
+            if (downloadButton) {
+                downloadButton.addEventListener('click', () => this.downloadCompressedFile(container));
+            }
         }
 
         updateProcessingStatus(container, type) {
@@ -470,16 +495,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     container.dataset.compressedData = result.compressed_data;
                     container.dataset.compressedFilename = result.filename;
                     this.updateProcessingStatus(container, 'compressed');
-
-                    container.querySelector('.compressed-size').textContent = 
+            
+                    const processedInfo = container.querySelector('.processed-info');
+                    processedInfo.classList.remove('hidden');
+            
+                    // Update final information
+                    const finalWidth = result.metadata.final_dimensions[0];
+                    const finalHeight = result.metadata.final_dimensions[1];
+                    const finalAspectRatio = (finalWidth / finalHeight).toFixed(2);
+            
+                    container.querySelector('.final-size').textContent = 
                         this.formatFileSize(result.metadata.compressed_size);
+                    container.querySelector('.final-dimensions').textContent = 
+                        `${finalWidth} × ${finalHeight}px`;
+                    container.querySelector('.final-aspect-ratio').textContent = finalAspectRatio;
                     
                     const savings = Math.round((1 - result.metadata.compressed_size / result.metadata.original_size) * 100);
                     container.querySelector('.space-saved').textContent = `${savings}%`;
                     
-                    compressedInfo.classList.remove('hidden');
-                    downloadButton.disabled = false;
-
                     if (result.warnings && result.warnings.length > 0) {
                         this.showWarnings(container, result.warnings);
                     }
@@ -498,11 +531,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const progressBar = container.querySelector('.compression-progress');
             const resizeButton = container.querySelector('.resize-button');
             const downloadButton = container.querySelector('.download-button');
-
+        
             try {
                 progressBar.classList.remove('hidden');
                 resizeButton.disabled = true;
-
+        
                 const formData = new FormData();
                 formData.append('file', file);
                 
@@ -512,27 +545,38 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (settings.resize.width) formData.append('max_width', settings.resize.width);
                     if (settings.resize.height) formData.append('max_height', settings.resize.height);
                 }
-
+        
                 const response = await fetch('/resize', {
                     method: 'POST',
                     body: formData
                 });
-
+        
                 const result = await response.json();
-
+        
                 if (response.ok) {
                     container.dataset.compressedData = result.resized_data;
                     container.dataset.compressedFilename = result.filename;
                     this.updateProcessingStatus(container, 'resized');
-
-                    const dimensions = container.querySelector('.dimensions');
-                    if (dimensions) {
-                        dimensions.textContent = 
-                            `${result.metadata.final_dimensions[0]} × ${result.metadata.final_dimensions[1]}px`;
-                    }
+        
+                    const processedInfo = container.querySelector('.processed-info');
+                    processedInfo.classList.remove('hidden');
+        
+                    // Update final information
+                    const finalWidth = result.metadata.final_dimensions[0];
+                    const finalHeight = result.metadata.final_dimensions[1];
+                    const finalAspectRatio = (finalWidth / finalHeight).toFixed(2);
+        
+                    container.querySelector('.final-size').textContent = 
+                        this.formatFileSize(result.metadata.compressed_size);
+                    container.querySelector('.final-dimensions').textContent = 
+                        `${finalWidth} × ${finalHeight}px`;
+                    container.querySelector('.final-aspect-ratio').textContent = finalAspectRatio;
                     
+                    const savings = Math.round((1 - result.metadata.compressed_size / result.metadata.original_size) * 100);
+                    container.querySelector('.space-saved').textContent = `${savings}%`;
+        
                     downloadButton.disabled = false;
-
+        
                     if (result.warnings && result.warnings.length > 0) {
                         this.showWarnings(container, result.warnings);
                     }

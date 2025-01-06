@@ -28,24 +28,40 @@
 
         <!-- Image Information -->
         <div class="image-info">
+            <h3 class="info-section-title">Original</h3>
             <div class="info-row">
-                <span class="info-label">Original Size:</span>
+                <span class="info-label">Size:</span>
                 <span class="file-size"></span>
             </div>
             <div class="info-row">
                 <span class="info-label">Dimensions:</span>
                 <span class="dimensions"></span>
             </div>
+            <div class="info-row">
+                <span class="info-label">Aspect Ratio:</span>
+                <span class="aspect-ratio"></span>
+            </div>
             
-            <!-- Compression Results (Hidden by default) -->
-            <div class="compressed-info hidden">
+            <!-- Processing Results (Hidden by default) -->
+            <div class="processed-info hidden">
+                <h3 class="info-section-title">Final</h3>
                 <div class="info-row">
-                    <span class="info-label">Compressed Size:</span>
-                    <span class="compressed-size"></span>
+                    <span class="info-label">Size:</span>
+                    <span class="final-size"></span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Space Saved:</span>
-                    <span class="space-saved"></span>
+                    <span class="info-label">Dimensions:</span>
+                    <span class="final-dimensions"></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Aspect Ratio:</span>
+                    <span class="final-aspect-ratio"></span>
+                </div>
+                
+                <!-- Space saved banner -->
+                <div class="space-saved-banner">
+                    <i class="material-icons">save</i>
+                    <span class="space-saved"></span> space saved
                 </div>
             </div>
         </div>
