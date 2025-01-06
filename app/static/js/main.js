@@ -471,29 +471,37 @@ document.addEventListener('DOMContentLoaded', function() {
             const progressBar = container.querySelector('.compression-progress');
             const compressButton = container.querySelector('.compress-button');
             const downloadButton = container.querySelector('.download-button');
-            const compressedInfo = container.querySelector('.compressed-info');
-
+        
             try {
                 progressBar.classList.remove('hidden');
                 compressButton.disabled = true;
-
+        
                 const formData = new FormData();
                 formData.append('file', file);
                 
                 // Get settings from the settings manager
                 const settings = this.settingsManager.getSettings();
                 formData.append('mode', settings.compression.mode);
-
+        
                 const response = await fetch('/compress', {
                     method: 'POST',
                     body: formData
                 });
-
+        
                 const result = await response.json();
-
+        
                 if (response.ok) {
-                    container.dataset.compressedData = result.compressed_data;
-                    container.dataset.compressedFilename = result.filename;
+                    // Store the compressed data
+                    container.setAttribute('data-compressed-data', result.compressed_data);
+                    container.setAttribute('data-compressed-filename', result.filename);
+                    
+                    // Enable download button
+                    downloadButton.disabled = false;
+                    
+                    // Debug log
+                    console.log('Stored compressed data (first 50 chars):', result.compressed_data.substring(0, 50));
+                    console.log('Stored filename:', result.filename);
+        
                     this.updateProcessingStatus(container, 'compressed');
             
                     const processedInfo = container.querySelector('.processed-info');
@@ -520,6 +528,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(result.error || 'Compression failed');
                 }
             } catch (error) {
+                console.error('Compression error:', error);
                 this.showError(container, error.message);
             } finally {
                 progressBar.classList.add('hidden');
@@ -554,8 +563,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 const result = await response.json();
         
                 if (response.ok) {
-                    container.dataset.compressedData = result.resized_data;
-                    container.dataset.compressedFilename = result.filename;
+                    // Store the compressed data - note we now use compressed_data consistently
+                    container.setAttribute('data-compressed-data', result.compressed_data);
+                    container.setAttribute('data-compressed-filename', result.filename);
+                    
+                    // Enable download button
+                    downloadButton.disabled = false;
+                    
+                    // Debug log
+                    console.log('Stored resized data (first 50 chars):', result.compressed_data.substring(0, 50));
+                    console.log('Stored filename:', result.filename);
+        
                     this.updateProcessingStatus(container, 'resized');
         
                     const processedInfo = container.querySelector('.processed-info');
@@ -584,6 +602,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(result.error || 'Resize failed');
                 }
             } catch (error) {
+                console.error('Resize error:', error);
                 this.showError(container, error.message);
             } finally {
                 progressBar.classList.add('hidden');
@@ -622,41 +641,72 @@ document.addEventListener('DOMContentLoaded', function() {
         async downloadSelectedFiles() {
             const selectedTiles = Array.from(document.querySelectorAll('.preview-tile'))
                 .filter(tile => tile.querySelector('.image-select').checked);
-
+        
             if (selectedTiles.length === 1) {
                 this.downloadCompressedFile(selectedTiles[0]);
             } else if (selectedTiles.length > 1) {
                 const zip = new JSZip();
                 
                 for (const tile of selectedTiles) {
-                    if (tile.dataset.compressedData) {
-                        const filename = tile.dataset.compressedFilename;
-                        zip.file(filename, tile.dataset.compressedData, {base64: true});
+                    const compressedData = tile.getAttribute('data-compressed-data');
+                    const filename = tile.getAttribute('data-compressed-filename');
+                    
+                    if (compressedData && filename) {
+                        // Convert hex string to binary data
+                        const binaryData = new Uint8Array(
+                            compressedData.match(/.{1,2}/g)
+                            .map(byte => parseInt(byte, 16))
+                        );
+                        zip.file(filename, binaryData);
                     }
                 }
-
-                const content = await zip.generateAsync({type: 'blob'});
-                const url = URL.createObjectURL(content);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'compressed_images.zip';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+        
+                try {
+                    const content = await zip.generateAsync({
+                        type: 'blob',
+                        compression: 'DEFLATE',
+                        compressionOptions: {
+                            level: 9
+                        }
+                    });
+                    
+                    const url = URL.createObjectURL(content);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'compressed_images.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error('Error creating zip file:', error);
+                    // Show error to user
+                    alert('Failed to create zip file. Please try again.');
+                }
             }
         }
 
         async downloadCompressedFile(container) {
             try {
+                const compressedData = container.getAttribute('data-compressed-data');
+                const filename = container.getAttribute('data-compressed-filename');
+                
+                // Debug log
+                console.log('Downloading - compressed data first 50 chars:', compressedData?.substring(0, 50));
+                console.log('Downloading - filename:', filename);
+        
+                if (!compressedData || !filename) {
+                    throw new Error('Missing compressed data or filename');
+                }
+        
                 const response = await fetch('/download', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        compressed_data: container.dataset.compressedData,
-                        filename: container.dataset.compressedFilename
+                        compressed_data: compressedData,
+                        filename: filename
                     })
                 });
                 
@@ -665,16 +715,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `compressed_${container.dataset.compressedFilename}`;
+                    a.download = `compressed_${filename}`;
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);
                     document.body.removeChild(a);
                 } else {
-                    throw new Error('Download failed');
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Download failed');
                 }
             } catch (error) {
-                this.showError(container, 'Failed to download the compressed image');
+                console.error('Download error:', error);
+                this.showError(container, error.message);
             }
         }
 

@@ -6,8 +6,25 @@ from .compression import ImageCompressor
 
 main = Blueprint('main', __name__)
 
-# Initialize with 10MB limit
+# Initialize with 50MB limit (as per your current setting)
 compressor = ImageCompressor(max_file_size_mb=50)
+
+# MIME type mapping
+MIME_TYPES = {
+    'JPEG': 'image/jpeg',
+    'PNG': 'image/png',
+    'WEBP': 'image/webp',
+    'TIFF': 'image/tiff'
+}
+
+def validate_hex_output(hex_string: str) -> bool:
+    """Validate that a string is valid hexadecimal"""
+    try:
+        # Try to convert back to bytes to validate
+        bytes.fromhex(hex_string)
+        return True
+    except ValueError:
+        return False
 
 @main.route('/')
 def index():
@@ -55,16 +72,24 @@ def compress_image():
                 quality
             )
             
-            # Return compressed data directly with metadata
+            # Convert to hex and validate
+            hex_data = compressed_data.hex()
+            if not validate_hex_output(hex_data):
+                raise ValueError("Invalid hex output generated")
+                
             return jsonify({
                 'message': 'File processed successfully',
-                'metadata': metadata,
-                'compressed_data': compressed_data.hex(),  # Convert bytes to hex string for JSON
+                'metadata': {
+                    **metadata,
+                    'encoding': 'hex'
+                },
+                'compressed_data': hex_data,
                 'filename': secure_filename(file.filename),
                 'warnings': validation.warnings
             }), 200
-            
+        
         except Exception as e:
+            current_app.logger.error(f"Compression failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
         
     return jsonify({'error': 'Invalid file type'}), 400
@@ -75,22 +100,39 @@ def download_file():
     try:
         data = request.json
         if not data or 'compressed_data' not in data or 'filename' not in data:
+            current_app.logger.error("Invalid request data structure")
             return jsonify({'error': 'Invalid request data'}), 400
             
-        # Convert hex string back to bytes
-        compressed_data = bytes.fromhex(data['compressed_data'])
+        # Log the first few characters of the compressed data for debugging
+        compressed_data_str = data['compressed_data']
+        current_app.logger.debug(f"First 50 chars of compressed data: {compressed_data_str[:50]}")
+        
+        try:
+            # Convert hex string back to bytes
+            compressed_data = bytes.fromhex(compressed_data_str)
+        except ValueError as hex_error:
+            current_app.logger.error(f"Hex conversion failed: {str(hex_error)}")
+            current_app.logger.error(f"Data type: {type(compressed_data_str)}")
+            return jsonify({'error': 'Invalid data encoding'}), 400
+            
         filename = secure_filename(data['filename'])
+        
+        # Determine the mime type from the file extension
+        file_ext = filename.rsplit('.', 1)[-1].upper()
+        if file_ext == 'JPG':
+            file_ext = 'JPEG'
+        mime_type = MIME_TYPES.get(file_ext, 'application/octet-stream')
         
         # Create in-memory file
         file_obj = io.BytesIO(compressed_data)
         file_obj.seek(0)
         
-        # Send file directly from memory
+        # Send file directly from memory with correct mime type
         return send_file(
             file_obj,
             as_attachment=True,
             download_name=f"compressed_{filename}",
-            mimetype='image/jpeg'  # Adjust based on actual file type
+            mimetype=mime_type
         )
         
     except Exception as e:
@@ -124,7 +166,7 @@ def resize_image():
                     'warnings': validation.warnings
                 }), 400
 
-            # Use the compressor's methods to handle the resize
+            # Process image
             compressed_data, metadata = compressor.compress_image(
                 image_data,
                 'lossless',
@@ -132,17 +174,19 @@ def resize_image():
                 max_height
             )
             
-            # Ensure metadata has all required fields
-            metadata.update({
-                'original_size': len(image_data),
-                'compressed_size': len(compressed_data)
-            })
-            
+            # Convert to hex and validate
+            hex_data = compressed_data.hex()
+            if not validate_hex_output(hex_data):
+                raise ValueError("Invalid hex output generated")
+                
             return jsonify({
-                'message': 'File resized successfully',
-                'resized_data': compressed_data.hex(),
+                'message': 'File processed successfully',
+                'metadata': {
+                    **metadata,
+                    'encoding': 'hex'
+                },
+                'compressed_data': hex_data,
                 'filename': secure_filename(file.filename),
-                'metadata': metadata,
                 'warnings': validation.warnings
             }), 200
             
