@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app
 import io
+from PIL import Image
 from werkzeug.utils import secure_filename
 from .compression import ImageCompressor
 
@@ -114,17 +115,6 @@ def resize_image():
             max_width = request.form.get('max_width', type=int)
             max_height = request.form.get('max_height', type=int)
             
-            # If neither dimension is specified, return original
-            if not max_width and not max_height:
-                return jsonify({
-                    'message': 'No resize needed',
-                    'resized_data': image_data.hex(),
-                    'filename': secure_filename(file.filename),
-                    'metadata': {
-                        'final_dimensions': Image.open(io.BytesIO(image_data)).size
-                    }
-                }), 200
-            
             # Validate the image
             validation = compressor.validate_image(image_data)
             if not validation.is_valid:
@@ -133,26 +123,27 @@ def resize_image():
                     'details': validation.errors,
                     'warnings': validation.warnings
                 }), 400
-            
-            # Resize the image
-            img = Image.open(io.BytesIO(image_data))
-            resized_img = compressor._resize_image(img, max_width, max_height)
-            
-            # Save to bytes
-            output_buffer = io.BytesIO()
-            resized_img.save(output_buffer, format=img.format)
-            resized_data = output_buffer.getvalue()
+
+            # Use the compressor's methods to handle the resize
+            # We'll use 'lossless' mode to maintain quality
+            compressed_data, metadata = compressor.compress_image(
+                image_data,
+                'lossless',
+                max_width,
+                max_height
+            )
             
             return jsonify({
                 'message': 'File resized successfully',
-                'resized_data': resized_data.hex(),
+                'resized_data': compressed_data.hex(),
                 'filename': secure_filename(file.filename),
                 'metadata': {
-                    'final_dimensions': resized_img.size
+                    'final_dimensions': metadata['final_dimensions']
                 }
             }), 200
             
         except Exception as e:
+            current_app.logger.error(f"Resize failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
         
     return jsonify({'error': 'Invalid file type'}), 400
