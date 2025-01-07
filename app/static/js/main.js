@@ -1,7 +1,14 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Material Design Components for top app bar
-    const topAppBar = new mdc.topAppBar.MDCTopAppBar(document.querySelector('.mdc-top-app-bar'));
-    
+    const topAppBar = document.querySelector('.mdc-top-app-bar');
+    if (topAppBar) {
+        new mdc.topAppBar.MDCTopAppBar(topAppBar);
+    }
+
+        
+    // Initialize theme toggle
+    initializeTheme();
+
     // Add scroll listener for batch controls shadow
     const batchControls = document.querySelector('.batch-controls');
     if (batchControls) {
@@ -28,9 +35,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             };
 
-            this.initializeModals();
-            this.initializeDisplays();
-            this.loadSettings();
+            // Only initialize if we're on the main page
+            if (document.querySelector('.app-layout')) {
+                this.initializeModals();
+                this.initializeDisplays();
+                this.loadSettings();
+            }
         }
 
         initializeModals() {
@@ -40,9 +50,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const closeCompressionBtn = document.getElementById('close-compression-modal');
             const saveCompressionBtn = document.getElementById('save-compression-settings');
 
-            openCompressionBtn.addEventListener('click', () => this.openModal(compressionModal));
-            closeCompressionBtn.addEventListener('click', () => this.closeModal(compressionModal));
-            saveCompressionBtn.addEventListener('click', () => this.saveCompressionSettings());
+            if (openCompressionBtn && compressionModal) {
+                openCompressionBtn.addEventListener('click', () => this.openModal(compressionModal));
+                closeCompressionBtn?.addEventListener('click', () => this.closeModal(compressionModal));
+                saveCompressionBtn?.addEventListener('click', () => this.saveCompressionSettings());
+            }
 
             // Resize Modal
             const resizeModal = document.getElementById('resize-modal');
@@ -818,11 +830,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Initialize theme toggle
-    initializeTheme();
+    // Only initialize compressor if we're on the main page
+    if (document.querySelector('.app-layout')) {
+        // Initialize the compressor
+        new ImageCompressor();
+    }
 
-    // Initialize the compressor
-    new ImageCompressor();
+    // Initialize login form if we're on the login page
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        initializeLoginForm();
+    }
 });
 
 // Theme management
@@ -870,4 +888,53 @@ function toggleTheme() {
 function updateThemeIcon(theme) {
     const themeIcon = document.getElementById('theme-toggle');
     themeIcon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+}
+
+// Separate login form initialization
+function initializeLoginForm() {
+    const form = document.getElementById('login-form');
+    
+    // Initialize Material Components
+    document.querySelectorAll('.mdc-text-field').forEach(element => {
+        new mdc.textField.MDCTextField(element);
+    });
+    
+    document.querySelectorAll('.mdc-button').forEach(element => {
+        new mdc.ripple.MDCRipple(element);
+    });
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        fetch(this.action, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams(new FormData(this)),
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                return response.text();
+            }
+        })
+        .then(html => {
+            if (html) {
+                document.documentElement.innerHTML = html;
+                // Reinitialize Material Components after DOM update
+                document.querySelectorAll('.mdc-text-field').forEach(element => {
+                    new mdc.textField.MDCTextField(element);
+                });
+                document.querySelectorAll('.mdc-button').forEach(element => {
+                    new mdc.ripple.MDCRipple(element);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    });
 }
