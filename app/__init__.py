@@ -46,10 +46,14 @@ def create_app():
     app.logger.info(f"ENV PASSWORD hash set: {bool(env_hash)}")
     app.logger.info(f"FALLBACK PASSWORD hash set: {bool(fallback_hash)}")
 
-    # Handle proxy headers
+    # Configure ProxyFix for proper header handling
     if os.getenv('PROXY_FIX', 'false').lower() == 'true':
         app.wsgi_app = ProxyFix(
-            app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+            app.wsgi_app,
+            x_for=1,      # Number of proxy servers
+            x_proto=1,    # Number of proxies that set X-Forwarded-Proto
+            x_host=1,     # Number of proxies that set X-Forwarded-Host
+            x_prefix=1    # Number of proxies that set X-Forwarded-Prefix
         )
     
     # Ensure instance folder exists

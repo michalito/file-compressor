@@ -1,6 +1,7 @@
 ### Issues 
 - Loading Bar on Tiles has broken, maybe add a holistic loading bar
 - Have a look at how the processing is done. Does it do resize and compress on the resize? if i resize or just compress do i do it on the original file? investigate and improve
+- When Dragging and Dropping , batch processing does not work. 
 
 ### Features
 - Add a feature to add a watermark on the image

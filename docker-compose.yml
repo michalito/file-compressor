@@ -8,7 +8,8 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - APP_PASSWORD=${APP_PASSWORD}
-      - FLASK_DEBUG=1  # Add this for debugging
+      # - FLASK_DEBUG=1  # Add this for debugging
+      - PROXY_FIX=true
     volumes:
       - app_secrets:/app/instance/secrets
       - ./app:/app/app  # Add this for development
