@@ -15,6 +15,17 @@ fi
 # Create .env file with secure permissions
 echo "SECRET_KEY=$SECRET_KEY" > /app/instance/secrets/.env
 echo "APP_PASSWORD=$APP_PASSWORD" >> /app/instance/secrets/.env
+
+# Generate password hash and store it
+python3 -c "
+from werkzeug.security import generate_password_hash
+import os
+password = os.environ.get('APP_PASSWORD')
+hash = generate_password_hash(password)
+with open('/app/instance/secrets/.env', 'a') as f:
+    f.write(f'\nPASSWORD_HASH={hash}\n')
+"
+
 chmod 600 /app/instance/secrets/.env
 
 # Create symlink to .env file

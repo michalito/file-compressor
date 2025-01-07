@@ -15,12 +15,18 @@ def create_app():
     app.config.update(
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,  # 16MB max file size
         SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),
-        PASSWORD_HASH=generate_password_hash(os.getenv('APP_PASSWORD', 'change-this-password')),
+        # Use pre-generated hash instead of generating it here
+        PASSWORD_HASH=os.getenv('PASSWORD_HASH'),
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict',
         PERMANENT_SESSION_LIFETIME=1800  # 30 minutes
     )
+
+    # Add logging for debugging
+    app.logger.info("App initialized with config values:")
+    app.logger.info(f"SECRET_KEY set: {'SECRET_KEY' in app.config}")
+    app.logger.info(f"PASSWORD_HASH set: {'PASSWORD_HASH' in app.config}")
 
     # Handle proxy headers
     if os.getenv('PROXY_FIX', 'false').lower() == 'true':

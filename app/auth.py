@@ -61,7 +61,7 @@ class Auth:
         """Attempt to log in with the given password"""
         ip = get_remote_address()
         
-        # Add debug logging
+        # Debug logging
         current_app.logger.debug(f"Login attempt from IP: {ip}")
         
         # Check if IP is locked out
@@ -69,10 +69,15 @@ class Auth:
             current_app.logger.warning(f"IP {ip} is locked out")
             raise RateLimitExceeded("Too many login attempts. Try again later.")
         
-        # Verify password
+        # Debug password verification
         stored_hash = current_app.config['PASSWORD_HASH']
-        current_app.logger.debug(f"Verifying password against stored hash")
+        if not stored_hash:
+            current_app.logger.error("No PASSWORD_HASH found in config")
+            return False
+            
+        current_app.logger.debug(f"Verifying password against hash")
         
+        # Verify password
         if check_password_hash(stored_hash, password):
             current_app.logger.info(f"Successful login from IP: {ip}")
             session['authenticated'] = True
@@ -80,7 +85,6 @@ class Auth:
             return True
         
         current_app.logger.warning(f"Failed login attempt from IP: {ip}")
-        # Record failed attempt
         self._record_failed_attempt(ip)
         return False
     
