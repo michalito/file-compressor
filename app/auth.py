@@ -70,27 +70,22 @@ class Auth:
             current_app.logger.warning(f"IP {ip} is locked out")
             raise RateLimitExceeded("Too many login attempts. Try again later.")
         
-        # Get both hashes
+        # Get password hash and fallback
         env_hash = current_app.config.get('PASSWORD_HASH')
-        fallback_hash = current_app.config.get('FALLBACK_HASH')
+        fallback_password = current_app.config.get('FALLBACK_PASSWORD')
         
         current_app.logger.debug("Checking passwords...")
         
-        # Try both passwords
-        is_valid = False
+        # First try the fallback with direct comparison
+        if password == fallback_password:
+            current_app.logger.info(f"Successful login using fallback password from IP: {ip}")
+            session['authenticated'] = True
+            self._reset_attempts(ip)
+            return True
         
-        # Check environment password if it exists
-        if env_hash:
-            is_valid = check_password_hash(env_hash, password)
-            current_app.logger.debug("Env password check result: %s", is_valid)
-        
-        # If env password didn't work, try fallback
-        if not is_valid and fallback_hash:
-            is_valid = check_password_hash(fallback_hash, password)
-            current_app.logger.debug("Fallback password check result: %s", is_valid)
-        
-        if is_valid:
-            current_app.logger.info(f"Successful login from IP: {ip}")
+        # Then try the environment password with hash check
+        if env_hash and check_password_hash(env_hash, password):
+            current_app.logger.info(f"Successful login using environment password from IP: {ip}")
             session['authenticated'] = True
             self._reset_attempts(ip)
             return True
