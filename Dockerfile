@@ -21,9 +21,10 @@ FROM python:3.11-slim
 # Set work directory
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies and dos2unix
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libzbar0 \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
@@ -48,16 +49,17 @@ RUN useradd -m appuser && \
 COPY app app/
 COPY run.py .
 
-# Copy and set permissions for entrypoint script BEFORE switching user
+# Copy and prepare entrypoint script
 COPY docker-entrypoint.sh /app/
-RUN chmod +x /app/docker-entrypoint.sh
+RUN dos2unix /app/docker-entrypoint.sh && \
+    chmod +x /app/docker-entrypoint.sh && \
+    chown appuser:appuser /app/docker-entrypoint.sh
 
 # Ensure proper permissions
 RUN mkdir -p instance/temp && \
     chown -R appuser:appuser instance && \
     chmod 755 app/compression/*.py && \
-    chmod 755 app/auth.py && \
-    chown appuser:appuser /app/docker-entrypoint.sh
+    chmod 755 app/auth.py
 
 # Switch to non-root user
 USER appuser
@@ -69,4 +71,4 @@ VOLUME /app/instance/secrets
 EXPOSE 8000
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "2", "--timeout", "120", "--forwarded-allow-ips", "*", "--worker-class", "gthread", "run:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "2", "--timeout", "120", "run:app"]

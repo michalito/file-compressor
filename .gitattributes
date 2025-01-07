@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# Force line endings to be LF even on Windows
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
