@@ -55,33 +55,67 @@
         <div id="preview-area" class="preview-area hidden">
             <!-- Batch Controls Bar -->
             <div class="batch-controls mdc-card">
-                <div class="batch-selection">
-                    <div class="mdc-form-field">
-                        <div class="mdc-checkbox">
-                            <input type="checkbox" id="select-all" class="mdc-checkbox__native-control"/>
-                            <div class="mdc-checkbox__background">
-                                <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
-                                    <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
-                                </svg>
+                <div class="batch-status">
+                    <div class="batch-selection">
+                        <div class="mdc-form-field">
+                            <div class="mdc-checkbox">
+                                <input type="checkbox" id="select-all" class="mdc-checkbox__native-control"/>
+                                <div class="mdc-checkbox__background">
+                                    <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
+                                        <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <label for="select-all">Select All Images</label>
+                        </div>
+                        <div class="status-indicators">
+                            <span class="total-files mdc-typography--body2">
+                                <i class="material-icons">photo_library</i>
+                                <span id="total-files-count">0</span> files loaded
+                            </span>
+                            <span class="selected-files mdc-typography--body2">
+                                <i class="material-icons">check_circle</i>
+                                <span id="selected-files-count">0</span> selected
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Batch Progress Section -->
+                    <div class="batch-progress hidden">
+                        <div class="progress-status">
+                            <span class="status-text mdc-typography--body2">
+                                Processing files: <span id="processed-count">0</span>/<span id="total-count">0</span>
+                            </span>
+                            <span class="time-remaining mdc-typography--caption" id="time-remaining"></span>
+                        </div>
+                        <div class="mdc-linear-progress" id="batch-progress-bar">
+                            <div class="mdc-linear-progress__buffer">
+                                <div class="mdc-linear-progress__buffer-bar"></div>
+                                <div class="mdc-linear-progress__buffer-dots"></div>
+                            </div>
+                            <div class="mdc-linear-progress__bar mdc-linear-progress__primary-bar">
+                                <span class="mdc-linear-progress__bar-inner"></span>
                             </div>
                         </div>
-                        <label for="select-all">Select All Images</label>
+                        <button class="mdc-button mdc-button--outlined" id="cancel-batch">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Cancel</span>
+                        </button>
                     </div>
-                    <span class="selection-count mdc-typography--caption"></span>
                 </div>
                 
                 <div class="batch-actions">
-                    <button class="mdc-button mdc-button--raised" id="compress-selected" disabled>
+                    <button class="mdc-button mdc-button--raised action-button" id="compress-selected" disabled>
                         <span class="mdc-button__ripple"></span>
                         <i class="material-icons mdc-button__icon">compress</i>
                         <span class="mdc-button__label">Compress Selected</span>
                     </button>
-                    <button class="mdc-button mdc-button--outlined" id="resize-selected" disabled>
+                    <button class="mdc-button mdc-button--outlined action-button" id="resize-selected" disabled>
                         <span class="mdc-button__ripple"></span>
                         <i class="material-icons mdc-button__icon">photo_size_select_large</i>
                         <span class="mdc-button__label">Resize Selected</span>
                     </button>
-                    <button class="mdc-button mdc-button--outlined" id="download-selected" disabled>
+                    <button class="mdc-button mdc-button--outlined action-button" id="download-selected" disabled>
                         <span class="mdc-button__ripple"></span>
                         <i class="material-icons mdc-button__icon">download</i>
                         <span class="mdc-button__label">Download Selected</span>

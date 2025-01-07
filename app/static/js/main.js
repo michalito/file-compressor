@@ -1,4 +1,40 @@
+class LoadingManager {
+    constructor() {
+        this.loader = document.getElementById('global-loader');
+        this.progressBar = null;
+        if (this.loader) {
+            const progressElement = this.loader.querySelector('.mdc-linear-progress');
+            this.progressBar = new mdc.linearProgress.MDCLinearProgress(progressElement);
+        }
+        this.activeRequests = 0;
+    }
+
+    show() {
+        this.activeRequests++;
+        if (this.loader && this.progressBar) {
+            this.loader.classList.remove('hidden');
+            this.progressBar.open();
+            this.progressBar.determinate = false;
+        }
+    }
+
+    hide() {
+        this.activeRequests--;
+        if (this.activeRequests <= 0) {
+            this.activeRequests = 0;
+            if (this.loader && this.progressBar) {
+                this.progressBar.close();
+                setTimeout(() => {
+                    this.loader.classList.add('hidden');
+                }, 300);
+            }
+        }
+    }
+}
+
+let loadingManager;
 document.addEventListener('DOMContentLoaded', function() {
+    loadingManager = new LoadingManager();
     // Initialize Material Design Components for top app bar
     const topAppBar = document.querySelector('.mdc-top-app-bar');
     if (topAppBar) {
@@ -237,12 +273,119 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    class BatchProcessor {
+        constructor() {
+            this.queue = [];
+            this.processing = false;
+            this.cancelled = false;
+            this.processed = 0;
+            this.total = 0;
+            this.startTime = null;
+            
+            this.progressBar = new mdc.linearProgress.MDCLinearProgress(
+                document.getElementById('batch-progress-bar')
+            );
+            
+            this.setupCancelButton();
+        }
+        
+        setupCancelButton() {
+            const cancelButton = document.getElementById('cancel-batch');
+            cancelButton.addEventListener('click', () => this.cancel());
+        }
+        
+        addToQueue(items) {
+            this.queue.push(...items);
+            this.updateCounters();
+        }
+        
+        updateCounters() {
+            const totalFiles = document.getElementById('total-files-count');
+            const selectedFiles = document.getElementById('selected-files-count');
+            const processedCount = document.getElementById('processed-count');
+            const totalCount = document.getElementById('total-count');
+            
+            totalFiles.textContent = document.querySelectorAll('.preview-tile').length;
+            selectedFiles.textContent = document.querySelectorAll('.image-select:checked').length;
+            processedCount.textContent = this.processed;
+            totalCount.textContent = this.total;
+        }
+        
+        showProgress() {
+            const progress = document.querySelector('.batch-progress');
+            progress.classList.remove('hidden');
+            this.progressBar.open();
+            this.startTime = Date.now();
+        }
+        
+        hideProgress() {
+            const progress = document.querySelector('.batch-progress');
+            this.progressBar.close();
+            setTimeout(() => {
+                progress.classList.add('hidden');
+            }, 300);
+        }
+        
+        updateProgress() {
+            if (this.total === 0) return;
+            
+            const progress = this.processed / this.total;
+            this.progressBar.progress = progress;
+            
+            // Update time remaining
+            if (this.startTime) {
+                const elapsed = (Date.now() - this.startTime) / 1000;
+                const averageTimePerItem = elapsed / this.processed;
+                const remaining = (this.total - this.processed) * averageTimePerItem;
+                
+                const timeRemaining = document.getElementById('time-remaining');
+                timeRemaining.textContent = remaining > 60 
+                    ? `About ${Math.ceil(remaining / 60)} minutes remaining`
+                    : `About ${Math.ceil(remaining)} seconds remaining`;
+            }
+        }
+        
+        async processQueue(processor) {
+            if (this.processing || this.queue.length === 0) return;
+            
+            this.processing = true;
+            this.cancelled = false;
+            this.processed = 0;
+            this.total = this.queue.length;
+            
+            this.showProgress();
+            
+            while (this.queue.length > 0 && !this.cancelled) {
+                const item = this.queue.shift();
+                try {
+                    await processor(item);
+                    this.processed++;
+                    this.updateProgress();
+                    this.updateCounters();
+                } catch (error) {
+                    console.error('Processing error:', error);
+                }
+            }
+            
+            this.processing = false;
+            this.hideProgress();
+            this.updateCounters();
+        }
+        
+        cancel() {
+            this.cancelled = true;
+            this.queue = [];
+            this.hideProgress();
+        }
+    }
+
     class ImageCompressor {
         constructor() {
             this.selectedFiles = new Set();
             this.template = document.getElementById('image-tile-template');
             this.previewArea = document.getElementById('preview-area');
             this.settingsManager = new SettingsManager();
+            this.batchProcessor = new BatchProcessor();
             this.initializeDropZone();
             this.initializeBatchControls();
             this.updateSelectionCount();
@@ -363,7 +506,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const compressSelected = document.getElementById('compress-selected');
             const downloadSelected = document.getElementById('download-selected');
             const resizeSelected = document.getElementById('resize-selected');
-
+        
             selectAll.addEventListener('change', (e) => {
                 const checkboxes = document.querySelectorAll('.image-select');
                 checkboxes.forEach(checkbox => {
@@ -371,8 +514,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     this.updateFileSelection(checkbox);
                 });
                 this.updateBatchButtons();
+                this.updateSelectionCount();
             });
-
+        
             compressSelected.addEventListener('click', () => this.compressSelectedFiles());
             downloadSelected.addEventListener('click', () => this.downloadSelectedFiles());
             if (resizeSelected) {
@@ -380,16 +524,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
+        // Helper method to get file for tile
+        getFileForTile(tile) {
+            const filename = tile.dataset.originalFile;
+            const fileInput = document.getElementById('file-input');
+            return Array.from(fileInput.files).find(f => f.name === filename);
+        }
+
         handleFiles(files) {
             if (files.length > 0) {
                 this.previewArea.classList.remove('hidden');
             }
-
+            
             Array.from(files).forEach(file => {
                 if (file.type.startsWith('image/')) {
                     this.createImageTile(file);
                 }
             });
+            
+            this.batchProcessor.updateCounters();
         }
 
         createImageTile(file) {
@@ -487,6 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 progressBar.classList.remove('hidden');
                 compressButton.disabled = true;
+                loadingManager.show();
         
                 const formData = new FormData();
                 formData.append('file', file);
@@ -545,6 +699,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } finally {
                 progressBar.classList.add('hidden');
                 compressButton.disabled = false;
+                loadingManager.hide();
             }
         }
 
@@ -554,6 +709,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const downloadButton = container.querySelector('.download-button');
         
             try {
+                loadingManager.show();
                 progressBar.classList.remove('hidden');
                 resizeButton.disabled = true;
         
@@ -619,35 +775,40 @@ document.addEventListener('DOMContentLoaded', function() {
             } finally {
                 progressBar.classList.add('hidden');
                 resizeButton.disabled = false;
+                loadingManager.hide();
             }
         }
 
         async resizeSelectedFiles() {
             const selectedTiles = Array.from(document.querySelectorAll('.preview-tile'))
                 .filter(tile => tile.querySelector('.image-select').checked);
-
-            for (const tile of selectedTiles) {
-                const filename = tile.dataset.originalFile;
-                const fileInput = document.getElementById('file-input');
-                const file = Array.from(fileInput.files).find(f => f.name === filename);
-                if (file) {
-                    await this.resizeImage(tile, file);
-                }
-            }
+                
+            const items = selectedTiles.map(tile => ({
+                tile,
+                file: this.getFileForTile(tile),
+                type: 'resize'
+            }));
+            
+            this.batchProcessor.addToQueue(items);
+            await this.batchProcessor.processQueue(async (item) => {
+                await this.resizeImage(item.tile, item.file);
+            });
         }
 
         async compressSelectedFiles() {
             const selectedTiles = Array.from(document.querySelectorAll('.preview-tile'))
                 .filter(tile => tile.querySelector('.image-select').checked);
-
-            for (const tile of selectedTiles) {
-                const filename = tile.dataset.originalFile;
-                const fileInput = document.getElementById('file-input');
-                const file = Array.from(fileInput.files).find(f => f.name === filename);
-                if (file) {
-                    await this.compressImage(tile, file);
-                }
-            }
+                
+            const items = selectedTiles.map(tile => ({
+                tile,
+                file: this.getFileForTile(tile),
+                type: 'compress'
+            }));
+            
+            this.batchProcessor.addToQueue(items);
+            await this.batchProcessor.processQueue(async (item) => {
+                await this.compressImage(item.tile, item.file);
+            });
         }
 
         async downloadSelectedFiles() {
@@ -674,6 +835,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
         
                 try {
+                    loadingManager.show();
                     const content = await zip.generateAsync({
                         type: 'blob',
                         compression: 'DEFLATE',
@@ -690,6 +852,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
+                    loadingManager.hide();
                 } catch (error) {
                     console.error('Error creating zip file:', error);
                     // Show error to user
@@ -766,10 +929,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         updateSelectionCount() {
             const count = this.selectedFiles.size;
-            const countElement = document.querySelector('.selection-count');
-            if (countElement) {
-                countElement.textContent = count > 0 ? `${count} image${count > 1 ? 's' : ''} selected` : '';
+            const selectedFiles = document.getElementById('selected-files-count');
+            if (selectedFiles) {
+                selectedFiles.textContent = count;
             }
+            this.updateBatchButtons();
         }
 
         showWarnings(container, warnings) {

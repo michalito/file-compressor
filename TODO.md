@@ -6,3 +6,4 @@
 ### Features
 - Add a feature to add a watermark on the image
 - Maybe instead of having the markers on the image preview for status , the button can change colours. Or something else.
+- Improve the architecture of main.js (separate, clean)

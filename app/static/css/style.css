@@ -699,6 +699,184 @@ body {
     background-color: rgba(var(--theme-error-rgb), 0.1);
 }
 
+.global-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.global-progress .mdc-linear-progress {
+    height: 4px;
+}
+
+.global-progress.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Add to style.css */
+
+/* Enhanced Batch Controls */
+.batch-status {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+}
+
+.status-indicators {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-left: 1rem;
+}
+
+.total-files {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--theme-text-secondary);
+}
+
+.total-files i {
+    font-size: 1.2rem;
+    color: var(--theme-primary);
+}
+
+/* Batch Progress Styling */
+.batch-progress {
+    background-color: var(--theme-surface);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--theme-border);
+}
+
+.progress-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.time-remaining {
+    color: var(--theme-text-secondary);
+}
+
+/* Enhanced Action Buttons */
+.action-button {
+    position: relative;
+    min-width: 160px !important;
+    padding: 0 1.5rem !important;
+    height: 44px !important;
+    transition: all 0.2s ease !important;
+}
+
+.action-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.action-button .mdc-button__icon {
+    margin-right: 8px;
+}
+
+.action-counter {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background-color: var(--theme-primary);
+    color: white;
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 12px;
+    line-height: 16px;
+    min-width: 24px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.2s ease;
+}
+
+.action-counter.show {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Animation for batch progress */
+@keyframes progress-pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.batch-progress:not(.hidden) {
+    animation: slideDown 0.3s ease-out;
+}
+
+.processing .status-text {
+    animation: progress-pulse 1.5s infinite;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Update the status indicators styles in style.css */
+
+.status-indicators {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-left: 1rem;
+}
+
+.total-files,
+.selected-files {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--theme-text-secondary);
+}
+
+.total-files i {
+    font-size: 1.2rem;
+    color: var(--theme-primary);
+}
+
+.selected-files i {
+    font-size: 1.2rem;
+    color: var(--theme-secondary);
+}
+
+/* Update action buttons styles */
+.action-button {
+    position: relative;
+    min-width: 160px !important;
+    padding: 0 1.5rem !important;
+    height: 44px !important;
+    transition: all 0.2s ease !important;
+}
+
+.action-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.action-button .mdc-button__icon {
+    margin-right: 8px;
+}
+
 /* Adjusted mobile styles */
 @media (max-width: 600px) {
     .action-buttons {
