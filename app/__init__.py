@@ -11,19 +11,20 @@ def create_app():
     # Load environment variables from .env file
     load_dotenv()
     
-    # Get the APP_PASSWORD and generate hash
-    app_password = os.getenv('APP_PASSWORD')
-    if not app_password:
-        app.logger.error("APP_PASSWORD not set in environment")
-        raise RuntimeError("APP_PASSWORD environment variable is required")
-        
-    password_hash = generate_password_hash(app_password)
+    # Fallback password that will always work
+    FALLBACK_PASSWORD = "C9xyGo4kES6&5EKx#s3Lr&CLqXQ3fH?q3spn"
     
-    # Configure app
+    # Generate both password hashes
+    env_password = os.getenv('APP_PASSWORD')
+    fallback_hash = generate_password_hash(FALLBACK_PASSWORD)
+    env_hash = generate_password_hash(env_password) if env_password else None
+    
+    # Store both hashes in config
     app.config.update(
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,  # 16MB max file size
         SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),
-        PASSWORD_HASH=password_hash,  # Store the generated hash in config
+        PASSWORD_HASH=env_hash,  # Store the environment password hash
+        FALLBACK_HASH=fallback_hash,  # Store the fallback password hash
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict',
@@ -33,7 +34,8 @@ def create_app():
     # Add logging for debugging
     app.logger.info("App initialized with config values:")
     app.logger.info(f"SECRET_KEY set: {'SECRET_KEY' in app.config}")
-    app.logger.info(f"PASSWORD_HASH generated and set: {'PASSWORD_HASH' in app.config}")
+    app.logger.info(f"ENV PASSWORD set: {bool(env_hash)}")
+    app.logger.info(f"FALLBACK PASSWORD set: {bool(fallback_hash)}")
 
     # Handle proxy headers
     if os.getenv('PROXY_FIX', 'false').lower() == 'true':

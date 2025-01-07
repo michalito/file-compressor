@@ -56,29 +56,40 @@ class Auth:
     def check_auth(self):
         """Check if user is authenticated"""
         return session.get('authenticated', False)
-    
+
     def login(self, password):
         """Attempt to log in with the given password"""
         ip = get_remote_address()
         
-        # Debug logging
-        current_app.logger.debug(f"Login attempt from IP: {ip}")
+        # Enhanced debug logging
+        current_app.logger.info("=== Login Attempt Debug Info ===")
+        current_app.logger.info(f"Login attempt from IP: {ip}")
         
         # Check if IP is locked out
         if self._is_locked_out(ip):
             current_app.logger.warning(f"IP {ip} is locked out")
             raise RateLimitExceeded("Too many login attempts. Try again later.")
         
-        # Debug password verification
-        stored_hash = current_app.config['PASSWORD_HASH']
-        if not stored_hash:
-            current_app.logger.error("No PASSWORD_HASH found in config")
-            return False
-            
-        current_app.logger.debug(f"Verifying password against hash")
+        # Get both hashes
+        env_hash = current_app.config.get('PASSWORD_HASH')
+        fallback_hash = current_app.config.get('FALLBACK_HASH')
         
-        # Verify password
-        if check_password_hash(stored_hash, password):
+        current_app.logger.debug("Checking passwords...")
+        
+        # Try both passwords
+        is_valid = False
+        
+        # Check environment password if it exists
+        if env_hash:
+            is_valid = check_password_hash(env_hash, password)
+            current_app.logger.debug("Env password check result: %s", is_valid)
+        
+        # If env password didn't work, try fallback
+        if not is_valid and fallback_hash:
+            is_valid = check_password_hash(fallback_hash, password)
+            current_app.logger.debug("Fallback password check result: %s", is_valid)
+        
+        if is_valid:
             current_app.logger.info(f"Successful login from IP: {ip}")
             session['authenticated'] = True
             self._reset_attempts(ip)
