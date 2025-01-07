@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import os
 from werkzeug.security import generate_password_hash
 from .auth import Auth
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 def create_app():
     app = Flask(__name__)
@@ -18,12 +19,14 @@ def create_app():
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict',
-        PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
-
-        SESSION_TYPE='filesystem',
-        SESSION_FILE_DIR='/tmp/flask_session',  # Make sure this directory exists
-        SESSION_FILE_THRESHOLD=500
+        PERMANENT_SESSION_LIFETIME=1800  # 30 minutes
     )
+
+    # Handle proxy headers
+    if os.getenv('PROXY_FIX', 'false').lower() == 'true':
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+        )
     
     # Ensure instance folder exists
     try:

@@ -9,7 +9,7 @@
             {{ error }}
         </div>
         {% endif %}
-        <form method="POST" action="{{ url_for('main.login') }}" class="login-form">
+        <form method="POST" action="{{ url_for('main.login') }}" class="login-form" id="login-form">
             <div class="mdc-text-field mdc-text-field--outlined">
                 <input type="password" id="password" name="password" class="mdc-text-field__input" required>
                 <div class="mdc-notched-outline">
@@ -38,6 +38,42 @@
         });
         document.querySelectorAll('.mdc-button').forEach(function(element) {
             new mdc.ripple.MDCRipple(element);
+        });
+
+        // Handle form submission
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            fetch(this.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(new FormData(this)),
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else {
+                    return response.text();
+                }
+            })
+            .then(html => {
+                if (html) {
+                    document.documentElement.innerHTML = html;
+                    // Reinitialize Material Components after DOM update
+                    document.querySelectorAll('.mdc-text-field').forEach(function(element) {
+                        new mdc.textField.MDCTextField(element);
+                    });
+                    document.querySelectorAll('.mdc-button').forEach(function(element) {
+                        new mdc.ripple.MDCRipple(element);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         });
     });
 </script>
