@@ -65,7 +65,7 @@ EXPOSE 8000
 
 # Modify the startup command to include security checks
 COPY ./docker-entrypoint.sh /app/
-# RUN chmod +x /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "2", "--timeout", "120", "run:app"]
