@@ -29,7 +29,7 @@ def create_app():
     
     # Store both hashes in config
     app.config.update(
-        MAX_CONTENT_LENGTH=16 * 1024 * 1024,  # 16MB max file size
+        MAX_CONTENT_LENGTH=50 * 1024 * 1024,  # 50MB max file size, adjust as needed
         SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),
         PASSWORD_HASH=env_hash,
         FALLBACK_HASH=fallback_hash,
