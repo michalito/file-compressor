@@ -48,11 +48,16 @@ RUN useradd -m appuser && \
 COPY app app/
 COPY run.py .
 
+# Copy and set permissions for entrypoint script BEFORE switching user
+COPY docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Ensure proper permissions
 RUN mkdir -p instance/temp && \
     chown -R appuser:appuser instance && \
     chmod 755 app/compression/*.py && \
-    chmod 755 app/auth.py
+    chmod 755 app/auth.py && \
+    chown appuser:appuser /app/docker-entrypoint.sh
 
 # Switch to non-root user
 USER appuser
@@ -62,10 +67,6 @@ VOLUME /app/instance/secrets
 
 # Expose port
 EXPOSE 8000
-
-# Modify the startup command to include security checks
-COPY ./docker-entrypoint.sh /app/
-RUN chmod +x /app/docker-entrypoint.sh
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "2", "--timeout", "120", "run:app"]
