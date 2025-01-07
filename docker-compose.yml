@@ -12,7 +12,7 @@ services:
       - app_secrets:/app/instance/secrets
     restart: unless-stopped
     # healthcheck:
-    #   test: ["CMD", "python3", "-c", "import os; exit(0 if all(x in os.environ for x in ['SECRET_KEY', 'APP_PASSWORD', 'PASSWORD_HASH']) else 1)"]
+    #   test: ["CMD", "python3", "-c", "import os; exit(0 if all(x in os.environ for x in ['SECRET_KEY', 'APP_PASSWORD']) else 1)"]
     #   interval: 30s
     #   timeout: 10s
     #   retries: 3
