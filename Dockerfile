@@ -59,6 +59,11 @@ RUN mkdir -p instance/temp && \
     chmod 755 app/auth.py && \
     chown appuser:appuser /app/docker-entrypoint.sh
 
+# Create session directory with proper permissions
+RUN mkdir -p /tmp/flask_session && \
+    chown -R appuser:appuser /tmp/flask_session && \
+    chmod 700 /tmp/flask_session
+
 # Switch to non-root user
 USER appuser
 

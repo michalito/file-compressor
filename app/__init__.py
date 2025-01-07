@@ -18,7 +18,11 @@ def create_app():
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict',
-        PERMANENT_SESSION_LIFETIME=1800  # 30 minutes
+        PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
+
+        SESSION_TYPE='filesystem',
+        SESSION_FILE_DIR='/tmp/flask_session',  # Make sure this directory exists
+        SESSION_FILE_THRESHOLD=500
     )
     
     # Ensure instance folder exists

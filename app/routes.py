@@ -31,11 +31,27 @@ def validate_hex_output(hex_string: str) -> bool:
 def login():
     if request.method == 'POST':
         try:
-            if current_app.auth.login(request.form.get('password', '')):
+            password = request.form.get('password', '')
+            current_app.logger.debug(f"Login attempt received")
+            
+            if not password:
+                current_app.logger.warning("No password provided")
+                return render_template('login.html', error='Password is required')
+                
+            if current_app.auth.login(password):
+                current_app.logger.info("Login successful")
                 return redirect(url_for('main.index'))
+            
+            current_app.logger.warning("Invalid password attempt")
             return render_template('login.html', error='Invalid password')
+            
         except RateLimitExceeded as e:
+            current_app.logger.warning(f"Rate limit exceeded: {str(e)}")
             return render_template('login.html', error=str(e))
+        except Exception as e:
+            current_app.logger.error(f"Login error: {str(e)}")
+            return render_template('login.html', error='An error occurred. Please try again.')
+    
     return render_template('login.html')
 
 @main.route('/logout')
