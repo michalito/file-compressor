@@ -8,12 +8,11 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - APP_PASSWORD=${APP_PASSWORD}
-      - PROXY_FIX=true
     volumes:
       - app_secrets:/app/instance/secrets
     restart: unless-stopped
     # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    #   test: ["CMD", "python3", "-c", "import os; exit(0 if all(x in os.environ for x in ['SECRET_KEY', 'APP_PASSWORD', 'PASSWORD_HASH']) else 1)"]
     #   interval: 30s
     #   timeout: 10s
     #   retries: 3
