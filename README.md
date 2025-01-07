@@ -40,9 +40,12 @@ A web-based image compression tool that provides efficient, in-memory image proc
 1. Clone the repository:
    ```bash
    git clone <repository-url>
-   cd image-compressor
+   cd file-compressor
    ```
-
+2. Add the .env file and change its variables
+   ```bash
+   cp example.env .env
+   ```
 2. Build and run with Docker:
    ```bash
    docker build -t image-compressor:prod .
