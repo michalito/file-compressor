@@ -1,12 +1,13 @@
-from flask import Blueprint, render_template, request, jsonify, send_file, current_app
+from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session
 import io
 from PIL import Image
 from werkzeug.utils import secure_filename
 from .compression import ImageCompressor
+from .auth import RateLimitExceeded
 
 main = Blueprint('main', __name__)
 
-# Initialize with 50MB limit (as per your current setting)
+# Initialize with 50MB limit
 compressor = ImageCompressor(max_file_size_mb=50)
 
 # MIME type mapping
@@ -26,11 +27,29 @@ def validate_hex_output(hex_string: str) -> bool:
     except ValueError:
         return False
 
+@main.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        try:
+            if current_app.auth.login(request.form.get('password', '')):
+                return redirect(url_for('main.index'))
+            return render_template('login.html', error='Invalid password')
+        except RateLimitExceeded as e:
+            return render_template('login.html', error=str(e))
+    return render_template('login.html')
+
+@main.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('main.login'))
+
 @main.route('/')
+@current_app.auth.login_required
 def index():
     return render_template('index.html')
 
 @main.route('/compress', methods=['POST'])
+@current_app.auth.login_required
 def compress_image():
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -95,6 +114,7 @@ def compress_image():
     return jsonify({'error': 'Invalid file type'}), 400
 
 @main.route('/download', methods=['POST'])
+@current_app.auth.login_required
 def download_file():
     """Handle download of compressed images directly from memory"""
     try:
@@ -140,6 +160,7 @@ def download_file():
         return jsonify({'error': 'Download failed'}), 500
 
 @main.route('/resize', methods=['POST'])
+@current_app.auth.login_required
 def resize_image():
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -197,6 +218,7 @@ def resize_image():
     return jsonify({'error': 'Invalid file type'}), 400
 
 @main.route('/theme', methods=['POST'])
+@current_app.auth.login_required
 def toggle_theme():
     theme = request.json.get('theme')
     if theme not in ['light', 'dark']:

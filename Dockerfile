@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python dependencies
 COPY requirements.txt .
 RUN python -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt && \
+    /opt/venv/bin/pip install --no-cache-dir flask-limiter
 
 # Stage 2: Production stage
 FROM python:3.11-slim
@@ -36,24 +37,35 @@ ENV PATH="/opt/venv/bin:$PATH" \
     FLASK_APP=run.py \
     PYTHONPATH=/app
 
-# Create non-root user
+# Create non-root user and secure directories
 RUN useradd -m appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    mkdir -p /app/instance/secrets && \
+    chown -R appuser:appuser /app/instance && \
+    chmod 700 /app/instance/secrets
 
 # Copy application code
 COPY app app/
 COPY run.py .
 
-# Ensure proper permissions and create required directories
+# Ensure proper permissions
 RUN mkdir -p instance/temp && \
     chown -R appuser:appuser instance && \
-    chmod 755 app/compression/*.py
+    chmod 755 app/compression/*.py && \
+    chmod 755 app/auth.py
 
 # Switch to non-root user
 USER appuser
 
+# Create a mount point for secrets
+VOLUME /app/instance/secrets
+
 # Expose port
 EXPOSE 8000
 
-# Start Gunicorn
+# Modify the startup command to include security checks
+COPY ./docker-entrypoint.sh /app/
+# RUN chmod +x /app/docker-entrypoint.sh
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "2", "--timeout", "120", "run:app"]

@@ -21,6 +21,11 @@ A web-based image compression tool that provides efficient, in-memory image proc
   - Dark/Light theme
   - Responsive design
   - Batch download as ZIP
+- **Security Features**:
+  - Authentication required
+  - Rate limiting (60 operations/minute, 1000/day)
+  - Secure session management
+  - Protection against brute force attacks
 
 ## Requirements
 
@@ -41,10 +46,51 @@ A web-based image compression tool that provides efficient, in-memory image proc
 2. Build and run with Docker:
    ```bash
    docker build -t image-compressor:prod .
-   docker run -d --name image-compressor -p 8000:8000 -e SECRET_KEY=your-production-secret-key image-compressor:prod
+   docker run -d --name image-compressor -p 8000:8000 \
+      -e SECRET_KEY=your-production-secret-key \
+      -e APP_PASSWORD=your-secure-password \
+      image-compressor:prod
+   ```
+   OR with Docker Compose
+   ```bash
+   docker-compose up --build -d
+   ```
+3. Check Logs
+   ```bash
+   docker-compose logs -f
    ```
 
 The application will be available at `http://localhost:8000`
+
+### Monitoring
+
+Monitor your deployment:
+
+```bash
+# View container status
+docker-compose ps
+
+# View resource usage
+docker stats image-compressor
+
+# View application logs
+docker-compose logs -f web
+```
+
+### Updates and Maintenance
+
+Update your deployment:
+
+```bash
+# Pull latest changes
+git pull
+
+# Rebuild and restart with new changes
+docker-compose up -d --build
+
+# Remove old images
+docker image prune -f
+```
 
 ### Manual Installation
 
@@ -93,15 +139,21 @@ For production deployment, the application uses Gunicorn as the WSGI server with
 
 - `FLASK_ENV`: Set to `production` for production environment
 - `SECRET_KEY`: Required for session management (must be changed from default)
+- `APP_PASSWORD`: Required for authentication (must be set to a secure password)
 - `MAX_CONTENT_LENGTH`: Maximum allowed file size in bytes (default: 16MB)
 
 ### Security Considerations
 
 1. Always set a strong `SECRET_KEY` in production
-2. Configure a reverse proxy (e.g., Nginx) in front of Gunicorn
-3. Enable HTTPS in production
-4. Configure appropriate CORS settings if needed
-5. Monitor memory usage for large batch operations
+2. Set a secure `APP_PASSWORD` for authentication
+3. Configure a reverse proxy (e.g., Nginx) in front of Gunicorn
+4. Enable HTTPS in production
+5. Configure appropriate CORS settings if needed
+6. Monitor memory usage for large batch operations
+7. The application includes rate limiting:
+   - 60 operations per minute
+   - 1000 operations per day
+   - 5-minute lockout after 5 failed login attempts
 
 ### Example Nginx Configuration
 
@@ -121,12 +173,17 @@ server {
 
 ## Usage
 
-1. **Upload Images**:
+1. **Authentication**:
+   - Login with your configured password
+   - Session remains active for configured duration
+   - Rate limits apply to authenticated sessions
+
+2. **Upload Images**:
    - Drag and drop images onto the upload area
    - Click the upload area to select files
    - Supported formats: JPG, PNG, WebP, TIFF, HEIC
 
-2. **Configure Compression**:
+3. **Configure Compression**:
    - Select compression mode:
      - Lossless: For preserving quality
      - Web: For balanced compression
@@ -134,12 +191,13 @@ server {
    - Adjust quality settings if needed
    - Set maximum dimensions (optional)
 
-3. **Process Images**:
+4. **Process Images**:
    - Click "Compress" for individual images
    - Use "Compress Selected" for batch processing
    - Monitor progress through the progress bars
+   - Note: Rate limits apply (60/minute, 1000/day)
 
-4. **Download Results**:
+5. **Download Results**:
    - Download individual images
    - Use "Download Selected" for multiple files (creates ZIP)
    - Check compression statistics in the interface
