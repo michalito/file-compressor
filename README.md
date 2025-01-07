@@ -46,7 +46,10 @@ A web-based image compression tool that provides efficient, in-memory image proc
    ```bash
    cp example.env .env
    ```
-2. Build and run with Docker:
+   ```bash
+   nano .env
+   ```
+3. Build and run with Docker:
    ```bash
    docker build -t image-compressor:prod .
    docker run -d --name image-compressor -p 8000:8000 \
