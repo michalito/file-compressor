@@ -8,14 +8,16 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - APP_PASSWORD=${APP_PASSWORD}
+      - FLASK_DEBUG=1  # Add this for debugging
     volumes:
       - app_secrets:/app/instance/secrets
+      - ./app:/app/app  # Add this for development
     restart: unless-stopped
-    # healthcheck:
-    #   test: ["CMD", "python3", "-c", "import os; exit(0 if all(x in os.environ for x in ['SECRET_KEY', 'APP_PASSWORD']) else 1)"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
 volumes:
   app_secrets:

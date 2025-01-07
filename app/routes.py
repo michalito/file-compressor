@@ -33,6 +33,7 @@ def login():
         try:
             password = request.form.get('password', '')
             current_app.logger.debug(f"Login attempt received")
+            current_app.logger.debug(f"Session before login: {dict(session)}")
             
             if not password:
                 current_app.logger.warning("No password provided")
@@ -40,6 +41,7 @@ def login():
                 
             if current_app.auth.login(password):
                 current_app.logger.info("Login successful")
+                current_app.logger.debug(f"Session after login: {dict(session)}")
                 return redirect(url_for('main.index'))
             
             current_app.logger.warning("Invalid password attempt")
@@ -50,6 +52,7 @@ def login():
             return render_template('login.html', error=str(e))
         except Exception as e:
             current_app.logger.error(f"Login error: {str(e)}")
+            current_app.logger.exception("Full traceback:")
             return render_template('login.html', error='An error occurred. Please try again.')
     
     return render_template('login.html')
@@ -240,3 +243,12 @@ def toggle_theme():
     if theme not in ['light', 'dark']:
         return jsonify({'error': 'Invalid theme'}), 400
     return jsonify({'theme': theme})
+
+@main.route('/test-session')
+def test_session():
+    session['test'] = 'test value'
+    current_app.logger.debug(f"Session contents: {dict(session)}")
+    return jsonify({
+        'session': dict(session),
+        'authenticated': session.get('authenticated', False)
+    })

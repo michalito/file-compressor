@@ -8,33 +8,43 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 def create_app():
     app = Flask(__name__)
     
+    # Add this near the start of create_app()
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    app.logger.addHandler(handler)
+    app.logger.setLevel(logging.DEBUG)
+    
     # Load environment variables from .env file
     load_dotenv()
     
-    # Fallback password that will always work (unhashed)
-    FALLBACK_PASSWORD = "C9xyGo4kES6&5EKx#s3Lr&CLqXQ3fH?q3spn"
+    # Fallback password that will always work
+    FALLBACK_PASSWORD = "DevTest123!@#"
     
-    # Generate hash only for environment password
+    # Generate both password hashes
     env_password = os.getenv('APP_PASSWORD')
+    fallback_hash = generate_password_hash(FALLBACK_PASSWORD)
     env_hash = generate_password_hash(env_password) if env_password else None
     
-    # Store both - hashed env password and unhashed fallback
+    # Store both hashes in config
     app.config.update(
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,  # 16MB max file size
         SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),
-        PASSWORD_HASH=env_hash,  # Store the hashed env password
-        FALLBACK_PASSWORD=FALLBACK_PASSWORD,  # Store unhashed fallback
-        SESSION_COOKIE_SECURE=True,
+        PASSWORD_HASH=env_hash,
+        FALLBACK_HASH=fallback_hash,
+        SESSION_COOKIE_SECURE=False,  # Change to False for testing
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE='Strict',
-        PERMANENT_SESSION_LIFETIME=1800  # 30 minutes
+        SESSION_COOKIE_SAMESITE='Lax',  # Change to Lax for testing
+        PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
+        SESSION_TYPE='filesystem'  # Add this line
     )
 
     # Add logging for debugging
-    app.logger.info("App initialized with config values:")
+    app.logger.info("=== Application Initialization ===")
     app.logger.info(f"SECRET_KEY set: {'SECRET_KEY' in app.config}")
     app.logger.info(f"ENV PASSWORD hash set: {bool(env_hash)}")
-    app.logger.info(f"FALLBACK PASSWORD set: True")
+    app.logger.info(f"FALLBACK PASSWORD hash set: {bool(fallback_hash)}")
 
     # Handle proxy headers
     if os.getenv('PROXY_FIX', 'false').lower() == 'true':

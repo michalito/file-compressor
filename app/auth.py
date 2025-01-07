@@ -1,4 +1,5 @@
 from functools import wraps
+from datetime import datetime
 from flask import session, redirect, url_for, request, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
 import time
@@ -61,38 +62,67 @@ class Auth:
         """Attempt to log in with the given password"""
         ip = get_remote_address()
         
-        # Enhanced debug logging
-        current_app.logger.info("=== Login Attempt Debug Info ===")
-        current_app.logger.info(f"Login attempt from IP: {ip}")
-        
-        # Check if IP is locked out
-        if self._is_locked_out(ip):
-            current_app.logger.warning(f"IP {ip} is locked out")
-            raise RateLimitExceeded("Too many login attempts. Try again later.")
-        
-        # Get password hash and fallback
-        env_hash = current_app.config.get('PASSWORD_HASH')
-        fallback_password = current_app.config.get('FALLBACK_PASSWORD')
-        
-        current_app.logger.debug("Checking passwords...")
-        
-        # First try the fallback with direct comparison
-        if password == fallback_password:
-            current_app.logger.info(f"Successful login using fallback password from IP: {ip}")
-            session['authenticated'] = True
-            self._reset_attempts(ip)
-            return True
-        
-        # Then try the environment password with hash check
-        if env_hash and check_password_hash(env_hash, password):
-            current_app.logger.info(f"Successful login using environment password from IP: {ip}")
-            session['authenticated'] = True
-            self._reset_attempts(ip)
-            return True
-        
-        current_app.logger.warning(f"Failed login attempt from IP: {ip}")
-        self._record_failed_attempt(ip)
-        return False
+        try:
+            # Enhanced debug logging
+            current_app.logger.info("\n=== Login Attempt Started ===")
+            current_app.logger.info(f"Login attempt from IP: {ip}")
+            current_app.logger.info(f"Timestamp: {datetime.now().isoformat()}")
+            
+            # Check if IP is locked out
+            if self._is_locked_out(ip):
+                current_app.logger.error(f"IP {ip} is locked out due to too many attempts")
+                raise RateLimitExceeded("Too many login attempts. Try again later.")
+            
+            # Get both hashes
+            env_hash = current_app.config.get('PASSWORD_HASH')
+            fallback_hash = current_app.config.get('FALLBACK_HASH')
+            
+            if not env_hash and not fallback_hash:
+                current_app.logger.error("Critical: No password hashes configured")
+                return False
+            
+            # Try both passwords
+            is_valid = False
+            auth_method = None
+            
+            # Check environment password if it exists
+            if env_hash:
+                is_valid = check_password_hash(env_hash, password)
+                if is_valid:
+                    auth_method = "environment"
+            
+            # If env password didn't work, try fallback
+            if not is_valid and fallback_hash:
+                is_valid = check_password_hash(fallback_hash, password)
+                if is_valid:
+                    auth_method = "fallback"
+            
+            if is_valid:
+                current_app.logger.info("=== Successful Authentication ===")
+                current_app.logger.info(f"IP: {ip}")
+                current_app.logger.info(f"Auth Method: {auth_method}")
+                current_app.logger.info(f"Timestamp: {datetime.now().isoformat()}")
+                session['authenticated'] = True
+                self._reset_attempts(ip)
+                return True
+            
+            # Log failed attempt
+            current_app.logger.error("=== Failed Authentication ===")
+            current_app.logger.error(f"IP: {ip}")
+            current_app.logger.error(f"Timestamp: {datetime.now().isoformat()}")
+            current_app.logger.error("Available auth methods:")
+            current_app.logger.error(f"- Environment password configured: {bool(env_hash)}")
+            current_app.logger.error(f"- Fallback password configured: {bool(fallback_hash)}")
+            
+            self._record_failed_attempt(ip)
+            return False
+            
+        except Exception as e:
+            current_app.logger.error("=== Authentication Error ===")
+            current_app.logger.error(f"IP: {ip}")
+            current_app.logger.error(f"Error: {str(e)}")
+            current_app.logger.error(f"Timestamp: {datetime.now().isoformat()}")
+            return False
     
     def _is_locked_out(self, ip):
         """Check if IP is locked out due to too many failed attempts"""
