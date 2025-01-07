@@ -20,7 +20,7 @@ def create_app():
     load_dotenv()
     
     # Fallback password that will always work
-    FALLBACK_PASSWORD = "DevTest123!@#"
+    FALLBACK_PASSWORD = ""
     
     # Generate both password hashes
     env_password = os.getenv('APP_PASSWORD')
