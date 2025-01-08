@@ -281,6 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.processed = 0;
             this.total = 0;
             this.startTime = null;
+            this.chunkSize = 5; // Process 5 files at a time
             
             this.progressBar = new mdc.linearProgress.MDCLinearProgress(
                 document.getElementById('batch-progress-bar')
@@ -356,15 +357,18 @@ document.addEventListener('DOMContentLoaded', function() {
             this.showProgress();
             
             while (this.queue.length > 0 && !this.cancelled) {
-                const item = this.queue.shift();
-                try {
-                    await processor(item);
-                    this.processed++;
-                    this.updateProgress();
-                    this.updateCounters();
-                } catch (error) {
-                    console.error('Processing error:', error);
-                }
+                // Process in chunks
+                const chunk = this.queue.splice(0, this.chunkSize);
+                await Promise.all(chunk.map(async (item) => {
+                    try {
+                        await processor(item);
+                        this.processed++;
+                        this.updateProgress();
+                        this.updateCounters();
+                    } catch (error) {
+                        console.error('Processing error:', error);
+                    }
+                }));
             }
             
             this.processing = false;
@@ -382,6 +386,7 @@ document.addEventListener('DOMContentLoaded', function() {
     class ImageCompressor {
         constructor() {
             this.selectedFiles = new Set();
+            this.fileMap = new Map(); // Add this to store file references
             this.template = document.getElementById('image-tile-template');
             this.previewArea = document.getElementById('preview-area');
             this.settingsManager = new SettingsManager();
@@ -526,9 +531,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Helper method to get file for tile
         getFileForTile(tile) {
-            const filename = tile.dataset.originalFile;
-            const fileInput = document.getElementById('file-input');
-            return Array.from(fileInput.files).find(f => f.name === filename);
+            const fileId = tile.dataset.fileId;
+            return this.fileMap.get(fileId);
         }
 
         handleFiles(files) {
@@ -549,7 +553,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const tile = document.importNode(this.template.content, true);
             const container = tile.querySelector('.preview-tile');
             
-            // Store the original file reference
+            // Store the file reference with a unique ID
+            const fileId = `file-${Date.now()}-${file.name}`;
+            this.fileMap.set(fileId, file);
+            container.dataset.fileId = fileId;
             container.dataset.originalFile = file.name;
         
             // Set up image preview and basic info
@@ -632,12 +639,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 50);
         }
 
+        removeTile(tile) {
+            const fileId = tile.dataset.fileId;
+            this.fileMap.delete(fileId);
+            tile.remove();
+        }
+
         async compressImage(container, file) {
             const progressBar = container.querySelector('.compression-progress');
             const compressButton = container.querySelector('.compress-button');
             const downloadButton = container.querySelector('.download-button');
         
             try {
+                if (!file) {
+                    throw new Error(`No file found for ${container.dataset.originalFile}`);
+                }
                 progressBar.classList.remove('hidden');
                 compressButton.disabled = true;
                 loadingManager.show();
@@ -653,6 +669,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     method: 'POST',
                     body: formData
                 });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
         
                 const result = await response.json();
         
@@ -663,10 +684,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Enable download button
                     downloadButton.disabled = false;
-                    
-                    // Debug log
-                    console.log('Stored compressed data (first 50 chars):', result.compressed_data.substring(0, 50));
-                    console.log('Stored filename:', result.filename);
         
                     this.updateProcessingStatus(container, 'compressed');
             
@@ -695,7 +712,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } catch (error) {
                 console.error('Compression error:', error);
-                this.showError(container, error.message);
+                this.showError(container, `Compression failed: ${error.message}`);
+                
+                // Optional: Add retry logic
+                if (error.message.includes('No file found')) {
+                    // Attempt to recover the file
+                    const recoveredFile = await this.attemptFileRecovery(container);
+                    if (recoveredFile) {
+                        return this.compressImage(container, recoveredFile);
+                    }
+                }
             } finally {
                 progressBar.classList.add('hidden');
                 compressButton.disabled = false;
@@ -737,11 +763,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Enable download button
                     downloadButton.disabled = false;
-                    
-                    // Debug log
-                    console.log('Stored resized data (first 50 chars):', result.compressed_data.substring(0, 50));
-                    console.log('Stored filename:', result.filename);
-        
+
                     this.updateProcessingStatus(container, 'resized');
         
                     const processedInfo = container.querySelector('.processed-info');
@@ -809,6 +831,15 @@ document.addEventListener('DOMContentLoaded', function() {
             await this.batchProcessor.processQueue(async (item) => {
                 await this.compressImage(item.tile, item.file);
             });
+        }
+
+        async attemptFileRecovery(container) {
+            const fileInput = document.getElementById('file-input');
+            const filename = container.dataset.originalFile;
+            
+            // Try to find the file in the input
+            const files = Array.from(fileInput.files);
+            return files.find(f => f.name === filename);
         }
 
         async downloadSelectedFiles() {
