@@ -877,6 +877,13 @@ body {
     margin-right: 8px;
 }
 
+.mdc-top-app-bar__section img {
+    height: 48px;
+    width: 48px;
+    margin-left: 80px;
+    margin-right: -12px;
+}
+
 /* Adjusted mobile styles */
 @media (max-width: 600px) {
     .action-buttons {
