@@ -1,5 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" fill="#6200ee" rx="6"/>
-  <path d="M8 16 L16 8 L24 16 L16 24 Z" fill="white"/>
-  <circle cx="16" cy="16" r="4" fill="white"/>
+  <!-- Background rounded square -->
+  <rect width="32" height="32" fill="#9E0D3D" rx="6"/>
+  
+  <!-- Maximum size diamond shape -->
+  <path d="M2 16 L16 2 L30 16 L16 30 Z" fill="#8A038C"/>
+  
+  <!-- Enlarged center circle -->
+  <circle cx="16" cy="16" r="6" fill="#A60F46"/>
 </svg>
