@@ -3,48 +3,50 @@
 {% block content %}
 <div class="app-layout">
     <!-- Sidebar Controls -->
-    <div class="sidebar">
-        <!-- Upload Area -->
-        <div class="mdc-card upload-area">
-            <div class="mdc-card__primary-action" tabindex="0">
-                <div class="card-content">
-                    <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff" class="file-input">
-                    <div class="upload-message">
-                        <i class="material-icons">cloud_upload</i>
-                        <p>Drag and drop images here or click to select files</p>
-                        <p class="supported-formats">Supported formats: JPG, PNG, WebP, TIFF</p>
+    <div class="sidebar-container">
+        <div class="sidebar">
+            <!-- Upload Area -->
+            <div class="mdc-card upload-area">
+                <div class="mdc-card__primary-action" tabindex="0">
+                    <div class="card-content">
+                        <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff" class="file-input">
+                        <div class="upload-message">
+                            <i class="material-icons">cloud_upload</i>
+                            <p>Drag and drop images here or click to select files</p>
+                            <p class="supported-formats">Supported formats: JPG, PNG, WebP, TIFF</p>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Settings Panels -->
-        <div class="settings-panels">
-            <!-- Compression Settings Summary -->
-            <div class="mdc-card settings-summary compression-summary">
-                <h2 class="mdc-typography--headline6">Compression Settings</h2>
-                <div class="current-settings">
-                    <p class="setting-value">Mode: <span id="compression-mode-display">Lossless</span></p>
+            <!-- Settings Panels -->
+            <div class="settings-panels">
+                <!-- Compression Settings Summary -->
+                <div class="mdc-card settings-summary compression-summary">
+                    <h2 class="mdc-typography--headline6">Compression Settings</h2>
+                    <div class="current-settings">
+                        <p class="setting-value">Mode: <span id="compression-mode-display">Lossless</span></p>
+                    </div>
+                    <button class="mdc-button mdc-button--outlined" id="open-compression-settings">
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">settings</i>
+                        <span class="mdc-button__label">Configure</span>
+                    </button>
                 </div>
-                <button class="mdc-button mdc-button--outlined" id="open-compression-settings">
-                    <span class="mdc-button__ripple"></span>
-                    <i class="material-icons mdc-button__icon">settings</i>
-                    <span class="mdc-button__label">Configure</span>
-                </button>
-            </div>
 
-            <!-- Resize Settings Summary -->
-            <div class="mdc-card settings-summary resize-summary">
-                <h2 class="mdc-typography--headline6">Resize Settings</h2>
-                <div class="current-settings">
-                    <p class="setting-value">Size: <span id="resize-mode-display">Original Size</span></p>
-                    <p class="setting-value custom-size-display hidden">Dimensions: <span id="resize-dimensions-display"></span></p>
+                <!-- Resize Settings Summary -->
+                <div class="mdc-card settings-summary resize-summary">
+                    <h2 class="mdc-typography--headline6">Resize Settings</h2>
+                    <div class="current-settings">
+                        <p class="setting-value">Size: <span id="resize-mode-display">Original Size</span></p>
+                        <p class="setting-value custom-size-display hidden">Dimensions: <span id="resize-dimensions-display"></span></p>
+                    </div>
+                    <button class="mdc-button mdc-button--outlined" id="open-resize-settings">
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">settings</i>
+                        <span class="mdc-button__label">Configure</span>
+                    </button>
                 </div>
-                <button class="mdc-button mdc-button--outlined" id="open-resize-settings">
-                    <span class="mdc-button__ripple"></span>
-                    <i class="material-icons mdc-button__icon">settings</i>
-                    <span class="mdc-button__label">Configure</span>
-                </button>
             </div>
         </div>
     </div>
