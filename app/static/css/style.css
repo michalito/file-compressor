@@ -895,6 +895,11 @@ body {
     margin-right: -12px;
 }
 
+button:focus, input:focus {
+    outline: 2px solid var(--theme-primary);
+    outline-offset: 2px;
+}
+
 /* Adjusted mobile styles */
 @media (max-width: 600px) {
     .action-buttons {
