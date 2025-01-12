@@ -4,7 +4,7 @@ services:
   web:
     build: .
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"  # Explicitly bind to all interfaces
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - APP_PASSWORD=${APP_PASSWORD}
