@@ -33,8 +33,8 @@ def create_app():
         SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),
         PASSWORD_HASH=env_hash,
         FALLBACK_HASH=fallback_hash,
-        SESSION_COOKIE_SECURE=True,  # Change to False for testing
-        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SECURE=False,  # Change to False for testing
+        SESSION_COOKIE_HTTPONLY=False,
         SESSION_COOKIE_SAMESITE='Lax',  # Change to Lax for testing
         PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
         SESSION_TYPE='filesystem',  # Add this line
