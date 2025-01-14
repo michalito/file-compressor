@@ -67,6 +67,72 @@ def logout():
 def index():
     return render_template('index.html')
 
+@main.route('/process', methods=['POST'])
+@current_app.auth.login_required
+def process_image():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+        
+    if file and file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.tiff')):
+        # Get processing parameters
+        compression_mode = request.form.get('compression_mode', 'lossless')
+        resize_mode = request.form.get('resize_mode', 'original')
+        max_width = request.form.get('max_width', type=int)
+        max_height = request.form.get('max_height', type=int)
+        quality = request.form.get('quality', type=int)
+        
+        try:
+            # Read the uploaded file
+            image_data = file.read()
+            
+            # Validate the image
+            validation = compressor.validate_image(image_data)
+            if not validation.is_valid:
+                return jsonify({
+                    'error': 'Image validation failed',
+                    'details': validation.errors,
+                    'warnings': validation.warnings
+                }), 400
+            
+            # Process warnings
+            if validation.warnings:
+                current_app.logger.warning(f"Image processing warnings for {file.filename}: {validation.warnings}")
+            
+            # Process the image
+            compressed_data, metadata = compressor.compress_image(
+                image_data,
+                compression_mode,
+                max_width if resize_mode == 'custom' else None,
+                max_height if resize_mode == 'custom' else None,
+                quality
+            )
+            
+            # Convert to hex and validate
+            hex_data = compressed_data.hex()
+            if not validate_hex_output(hex_data):
+                raise ValueError("Invalid hex output generated")
+                
+            return jsonify({
+                'message': 'File processed successfully',
+                'metadata': {
+                    **metadata,
+                    'encoding': 'hex'
+                },
+                'compressed_data': hex_data,
+                'filename': secure_filename(file.filename),
+                'warnings': validation.warnings
+            }), 200
+        
+        except Exception as e:
+            current_app.logger.error(f"Processing failed: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        
+    return jsonify({'error': 'Invalid file type'}), 400
+
 @main.route('/compress', methods=['POST'])
 @current_app.auth.login_required
 def compress_image():

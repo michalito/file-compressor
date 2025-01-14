@@ -418,7 +418,7 @@
   
     // ImageCompressor class to handle image compression and resizing
     class ImageCompressor {
-        constructor(settingsManager, batchProcessor) {
+      constructor(settingsManager, batchProcessor) {
           this.selectedFiles = new Set();
           this.fileMap = new Map();
           this.template = document.getElementById('image-tile-template');
@@ -428,7 +428,7 @@
           this.initializeDropZone();
           this.initializeBatchControls();
           this.updateSelectionCount();
-        }
+      }
   
       initializeDropZone() {
         const dropZone = document.querySelector('.upload-area');
@@ -457,23 +457,28 @@
   
       initializeBatchControls() {
         const selectAllCheckbox = document.getElementById('select-all');
-        const compressSelectedButton = document.getElementById('compress-selected');
+        const processSelectedButton = document.getElementById('process-selected');
         const downloadSelectedButton = document.getElementById('download-selected');
-        const resizeSelectedButton = document.getElementById('resize-selected');
-  
-        selectAllCheckbox.addEventListener('change', (e) => {
-          const isChecked = e.target.checked;
-          document.querySelectorAll('.image-select').forEach((checkbox) => {
-            checkbox.checked = isChecked;
-            this.updateFileSelection(checkbox);
-          });
-          this.updateBatchButtons();
-          this.updateSelectionCount();
-        });
-  
-        compressSelectedButton.addEventListener('click', () => this.compressSelectedFiles());
-        downloadSelectedButton.addEventListener('click', () => this.downloadSelectedFiles());
-        resizeSelectedButton?.addEventListener('click', () => this.resizeSelectedFiles());
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                document.querySelectorAll('.image-select').forEach((checkbox) => {
+                    checkbox.checked = isChecked;
+                    this.updateFileSelection(checkbox);
+                });
+                this.updateBatchButtons();
+                this.updateSelectionCount();
+            });
+        }
+
+        if (processSelectedButton) {
+            processSelectedButton.addEventListener('click', () => this.processSelectedFiles());
+        }
+
+        if (downloadSelectedButton) {
+            downloadSelectedButton.addEventListener('click', () => this.downloadSelectedFiles());
+        }
       }
   
       handleFiles(files) {
@@ -526,19 +531,96 @@
       }
   
       setupTileControls(tile, file) {
-        const compressButton = tile.querySelector('.compress-button');
-        const resizeButton = tile.querySelector('.resize-button');
+        const processButton = tile.querySelector('.process-button');
         const checkbox = tile.querySelector('.image-select');
         const downloadButton = tile.querySelector('.download-button');
-  
-        compressButton.addEventListener('click', () => this.compressImage(tile, file));
-        resizeButton.addEventListener('click', () => this.resizeImage(tile, file));
+
+        processButton.addEventListener('click', () => this.processImage(tile, file));
         checkbox.addEventListener('change', () => {
-          this.updateFileSelection(checkbox);
-          this.updateBatchButtons();
-          this.updateSelectionCount();
+            this.updateFileSelection(checkbox);
+            this.updateBatchButtons();
+            this.updateSelectionCount();
         });
         downloadButton.addEventListener('click', () => this.downloadCompressedFile(tile));
+      }
+
+      async processImage(container, file) {
+        const progressBar = container.querySelector('.compression-progress');
+        const processButton = container.querySelector('.process-button');
+        const downloadButton = container.querySelector('.download-button');
+    
+        try {
+            if (!file) {
+                throw new Error(`No file found for ${container.dataset.originalFile}`);
+            }
+            progressBar.classList.remove('hidden');
+            processButton.disabled = true;
+            loadingManager.show();
+    
+            const formData = new FormData();
+            formData.append('file', file);
+    
+            // Get settings from both modals
+            const settings = this.settingsManager.getSettings();
+            formData.append('compression_mode', settings.compression.mode);
+            formData.append('resize_mode', settings.resize.mode);
+            
+            if (settings.resize.mode === 'custom') {
+                formData.append('max_width', settings.resize.width);
+                formData.append('max_height', settings.resize.height);
+            }
+    
+            const response = await fetch('/process', {
+                method: 'POST',
+                body: formData,
+            });
+    
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+    
+            const result = await response.json();
+    
+            container.setAttribute('data-compressed-data', result.compressed_data);
+            container.setAttribute('data-compressed-filename', result.filename);
+    
+            downloadButton.disabled = false;
+    
+            // Update both processing status indicators
+            this.updateProcessingStatus(container, 'compressed');
+            if (settings.resize.mode === 'custom') {
+                this.updateProcessingStatus(container, 'resized');
+            }
+    
+            this.updateFinalInformation(container, result.metadata);
+    
+            if (result.warnings && result.warnings.length > 0) {
+                this.showWarnings(container, result.warnings);
+            }
+        } catch (error) {
+            console.error('Processing error:', error);
+            this.showError(container, `Processing failed: ${error.message}`);
+        } finally {
+            progressBar.classList.add('hidden');
+            processButton.disabled = false;
+            loadingManager.hide();
+        }
+      }
+
+      async processSelectedFiles() {
+        const selectedTiles = Array.from(document.querySelectorAll('.preview-tile'))
+            .filter((tile) => tile.querySelector('.image-select').checked);
+
+        const items = selectedTiles.map((tile) => ({
+            tile,
+            file: this.getFileForTile(tile)
+        }));
+
+        this.batchProcessor.addToQueue(items);
+        await this.batchProcessor.processQueue(async (item) => {
+            await this.processImage(item.tile, item.file);
+        });
       }
   
       async compressImage(container, file) {
@@ -647,41 +729,41 @@
 
       async downloadCompressedFile(container) {
         try {
-          const compressedData = container.getAttribute('data-compressed-data');
-          const filename = container.getAttribute('data-compressed-filename');
-  
-          if (!compressedData || !filename) {
-            throw new Error('Missing compressed data or filename');
-          }
-  
-          const response = await fetch('/download', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              compressed_data: compressedData,
-              filename: filename,
-            }),
-          });
-  
-          if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `compressed_${filename}`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-          } else {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Download failed');
-          }
+            const compressedData = container.getAttribute('data-compressed-data');
+            const filename = container.getAttribute('data-compressed-filename');
+
+            if (!compressedData || !filename) {
+                throw new Error('Missing compressed data or filename');
+            }
+
+            const response = await fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    compressed_data: compressedData,
+                    filename: filename,
+                }),
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `processed_${filename}`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Download failed');
+            }
         } catch (error) {
-          console.error('Download error:', error);
-          this.showError(container, error.message);
+            console.error('Download error:', error);
+            this.showError(container, error.message);
         }
       }
 
@@ -719,49 +801,50 @@
   
       async downloadSelectedFiles() {
         const selectedTiles = Array.from(document.querySelectorAll('.preview-tile'))
-          .filter((tile) => tile.querySelector('.image-select').checked);
-  
+            .filter((tile) => tile.querySelector('.image-select').checked);
+
         if (selectedTiles.length === 1) {
-          await this.downloadCompressedFile(selectedTiles[0]);
+            await this.downloadCompressedFile(selectedTiles[0]);
         } else if (selectedTiles.length > 1) {
-          const zip = new JSZip();
-  
-          for (const tile of selectedTiles) {
-            const compressedData = tile.getAttribute('data-compressed-data');
-            const filename = tile.getAttribute('data-compressed-filename');
-  
-            if (compressedData && filename) {
-              const binaryData = new Uint8Array(
-                compressedData.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
-              );
-              zip.file(filename, binaryData);
+            const zip = new JSZip();
+
+            try {
+                loadingManager.show();
+
+                for (const tile of selectedTiles) {
+                    const compressedData = tile.getAttribute('data-compressed-data');
+                    const filename = tile.getAttribute('data-compressed-filename');
+
+                    if (compressedData && filename) {
+                        const binaryData = new Uint8Array(
+                            compressedData.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
+                        );
+                        zip.file(filename, binaryData);
+                    }
+                }
+
+                const content = await zip.generateAsync({
+                    type: 'blob',
+                    compression: 'DEFLATE',
+                    compressionOptions: {
+                        level: 9,
+                    },
+                });
+
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'processed_images.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Error creating zip file:', error);
+                alert('Failed to create zip file. Please try again.');
+            } finally {
+                loadingManager.hide();
             }
-          }
-  
-          try {
-            loadingManager.show();
-            const content = await zip.generateAsync({
-              type: 'blob',
-              compression: 'DEFLATE',
-              compressionOptions: {
-                level: 9,
-              },
-            });
-  
-            const url = URL.createObjectURL(content);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'compressed_images.zip';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          } catch (error) {
-            console.error('Error creating zip file:', error);
-            alert('Failed to create zip file. Please try again.');
-          } finally {
-            loadingManager.hide();
-          }
         }
       }
 
@@ -783,13 +866,11 @@
   
       updateBatchButtons() {
         const hasSelection = this.selectedFiles.size > 0;
-        const compressSelectedButton = document.getElementById('compress-selected');
+        const processSelectedButton = document.getElementById('process-selected');
         const downloadSelectedButton = document.getElementById('download-selected');
-        const resizeSelectedButton = document.getElementById('resize-selected');
-  
-        if (compressSelectedButton) compressSelectedButton.disabled = !hasSelection;
+
+        if (processSelectedButton) processSelectedButton.disabled = !hasSelection;
         if (downloadSelectedButton) downloadSelectedButton.disabled = !hasSelection;
-        if (resizeSelectedButton) resizeSelectedButton.disabled = !hasSelection;
       }
   
       updateSelectionCount() {
