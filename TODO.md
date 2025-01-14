@@ -1,6 +1,7 @@
 ### Issues 
-- Have a look at how the processing is done. Does it do resize and compress on the resize? if i resize or just compress do i do it on the original file? investigate and improve
+- Have a look at how the processing is done. 
 - When Dragging and Dropping , batch processing does not work (might be fixed). 
+- Max compression now does webp files which are only openned on brower.
 
 ### Features
 - Add a feature to add a watermark on the image

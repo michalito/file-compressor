@@ -84,6 +84,7 @@ def process_image():
         max_width = request.form.get('max_width', type=int)
         max_height = request.form.get('max_height', type=int)
         quality = request.form.get('quality', type=int)
+        use_webp = request.form.get('use_webp', 'false').lower() == 'true'
         
         try:
             # Read the uploaded file
@@ -108,13 +109,20 @@ def process_image():
                 compression_mode,
                 max_width if resize_mode == 'custom' else None,
                 max_height if resize_mode == 'custom' else None,
-                quality
+                quality,
+                use_webp
             )
             
             # Convert to hex and validate
             hex_data = compressed_data.hex()
             if not validate_hex_output(hex_data):
                 raise ValueError("Invalid hex output generated")
+                
+            # Update filename extension based on format
+            filename = secure_filename(file.filename)
+            base_name = filename.rsplit('.', 1)[0]
+            extension = '.webp' if use_webp else '.jpg'
+            new_filename = base_name + extension
                 
             return jsonify({
                 'message': 'File processed successfully',
@@ -123,7 +131,7 @@ def process_image():
                     'encoding': 'hex'
                 },
                 'compressed_data': hex_data,
-                'filename': secure_filename(file.filename),
+                'filename': new_filename,
                 'warnings': validation.warnings
             }), 200
         

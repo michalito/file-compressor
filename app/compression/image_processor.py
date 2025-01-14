@@ -1,4 +1,3 @@
-# app/compression/image_processor.py
 from PIL import Image
 import io
 from typing import Tuple, Dict, Optional, List
@@ -38,12 +37,6 @@ class ImageCompressor:
     def validate_image(self, image_data: bytes) -> ValidationResult:
         """
         Validate image data before processing.
-        
-        Args:
-            image_data: Raw image data in bytes
-            
-        Returns:
-            ValidationResult object containing validation status and any errors/warnings
         """
         errors = []
         warnings = []
@@ -78,44 +71,99 @@ class ImageCompressor:
             warnings=warnings
         )
 
-    def _compress_lossless(self, img: Image.Image, quality: Optional[int] = None) -> Image.Image:
+    def _compress_lossless(self, img: Image.Image, quality: Optional[int] = None) -> bytes:
         """
         Lossless compression - maintains original quality while reducing file size.
-        - Keeps original format
-        - Uses PIL's optimize flag
-        - Suitable for professional photography or when quality is critical
         """
-        return img
+        output = io.BytesIO()
+        save_format = img.format if img.format else 'PNG'
+        
+        save_params = {
+            'format': save_format,
+            'optimize': True,
+            'quality': quality if quality is not None else 95
+        }
+        
+        # Add specific parameters for PNG
+        if save_format == 'PNG':
+            save_params.update({
+                'optimize': True,
+                'compress_level': 9
+            })
+        # Add specific parameters for JPEG
+        elif save_format in ['JPEG', 'JPG']:
+            save_params.update({
+                'optimize': True,
+                'quality': quality if quality is not None else 95,
+                'progressive': True
+            })
+            
+        img.save(output, **save_params)
+        return output.getvalue()
 
-    def _compress_web(self, img: Image.Image, quality: Optional[int] = None) -> Image.Image:
+    def _compress_web(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = True) -> bytes:
         """
-        Web optimization - balanced compression for general web use.
-        - Uses WebP with moderate compression
-        - Maintains good visual quality
-        - Preserves transparency when present
-        - Targets ~200-300KB for typical images
+        Web optimization - balanced compression for web use.
         """
+        output = io.BytesIO()
+        
+        # Convert to appropriate mode
         if img.mode in ('RGBA', 'LA'):
-            return img.convert('RGBA')
-        return img.convert('RGB')
+            processed_img = img.convert('RGBA' if use_webp else 'RGB')
+        else:
+            processed_img = img.convert('RGB')
+            
+        if use_webp:
+            # Save as WebP with web-optimized settings
+            processed_img.save(
+                output, 
+                format='WEBP',
+                quality=quality if quality is not None else 75,
+                method=4,  # 0-6, higher means better compression but slower
+                lossless=False,
+                exact=False
+            )
+        else:
+            # Save as JPEG with optimized settings
+            processed_img.save(
+                output,
+                format='JPEG',
+                quality=quality if quality is not None else 85,
+                optimize=True,
+                progressive=True
+            )
+        
+        return output.getvalue()
 
-    def _compress_high(self, img: Image.Image, quality: Optional[int] = None) -> Image.Image:
+    def _compress_high(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = False) -> bytes:
         """
         High compression - maximum size reduction.
-        - Uses WebP with aggressive compression
-        - Accepts more quality loss for smaller files
-        - Converts transparency to white background
-        - Targets <100KB for typical images
         """
-        # For high compression, we'll still use WebP but with more aggressive settings
+        output = io.BytesIO()
+        
+        # Convert RGBA images to RGB with white background
         if img.mode in ('RGBA', 'LA'):
             background = Image.new('RGB', img.size, (255, 255, 255))
             if img.mode == 'RGBA':
                 background.paste(img, mask=img.split()[3])
             else:
                 background.paste(img, mask=img.split()[1])
-            return background
-        return img.convert('RGB')
+            processed_img = background
+        else:
+            processed_img = img.convert('RGB')
+            
+        # Save as WebP with maximum compression
+        processed_img.save(
+            output,
+            format='WEBP',
+            quality=quality if quality is not None else 40,
+            method=6,  # Maximum compression effort
+            lossless=False,
+            exact=False,
+            minimize_size=True
+        )
+        
+        return output.getvalue()
 
     def compress_image(
         self,
@@ -123,11 +171,13 @@ class ImageCompressor:
         mode: str,
         max_width: Optional[int] = None,
         max_height: Optional[int] = None,
-        quality: Optional[int] = None
+        quality: Optional[int] = None,
+        use_webp: bool = False
     ) -> Tuple[bytes, Dict]:
         """
         Compress an image using the specified mode and parameters.
         """
+        # Open the image
         img = Image.open(io.BytesIO(image_data))
         original_format = img.format
         original_size = len(image_data)
@@ -138,74 +188,24 @@ class ImageCompressor:
             img = self._resize_image(img, max_width, max_height)
 
         # Apply compression based on mode
-        compressed_img = self.compression_modes[mode](img, quality)
+        compressed_data = self.compression_modes[mode](img, quality, use_webp)
         
-        # Define compression parameters based on mode
-        if mode == 'lossless':
-            save_format = original_format
-            save_params = {
-                'format': save_format,
-                'optimize': True,
-                'quality': quality if quality is not None else 95
-            }
-            # Add specific parameters for PNG
-            if save_format == 'PNG':
-                save_params.update({
-                    'optimize': True,
-                    'compress_level': 9  # Maximum PNG compression
-                })
-            # Add specific parameters for JPEG
-            elif save_format in ['JPEG', 'JPG']:
-                save_params.update({
-                    'optimize': True,
-                    'quality': quality if quality is not None else 95,
-                    'progressive': True
-                })
-                
-        elif mode == 'web':
-            save_format = 'WEBP'
-            save_params = {
-                'format': save_format,
-                'method': 4,  # 0-6, higher means better quality but slower
-                'quality': quality if quality is not None else 75,  # Good balance
-                'lossless': False,
-                'exact': False  # Allow inexact color matching for better compression
-            }
-        else:  # high compression
-            save_format = 'WEBP'
-            save_params = {
-                'format': save_format,
-                'method': 6,  # Maximum compression effort
-                'quality': quality if quality is not None else 40,  # Aggressive compression
-                'lossless': False,
-                'exact': False,
-                'minimize_size': True  # Ensure minimum file size
-            }
-
-        # Save to bytes with appropriate parameters
-        output_buffer = io.BytesIO()
-        compressed_img.save(output_buffer, **save_params)
-        compressed_data = output_buffer.getvalue()
-
-        # Calculate compression ratio
+        # Calculate compression ratio and prepare metadata
         compression_ratio = round(len(compressed_data) / original_size * 100, 2)
         
-        # If high compression didn't achieve better compression than web mode,
-        # try even more aggressive settings
-        if mode == 'high' and compression_ratio > 50:  # If less than 50% reduction
-            save_params['quality'] = 30
-            output_buffer = io.BytesIO()
-            compressed_img.save(output_buffer, **save_params)
-            compressed_data = output_buffer.getvalue()
+        # If high compression didn't achieve better than 50% reduction,
+        # try more aggressive settings
+        if mode == 'high' and compression_ratio > 50:
+            compressed_data = self._compress_high(img, quality=30)
             compression_ratio = round(len(compressed_data) / original_size * 100, 2)
 
         metadata = {
             'original_size': original_size,
             'compressed_size': len(compressed_data),
             'original_dimensions': original_dimensions,
-            'final_dimensions': compressed_img.size,
+            'final_dimensions': img.size,
             'compression_ratio': compression_ratio,
-            'format': save_format
+            'format': 'WEBP' if mode in ['web', 'high'] else original_format
         }
 
         return compressed_data, metadata

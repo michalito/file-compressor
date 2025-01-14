@@ -5,15 +5,26 @@ A web-based image compression tool that provides efficient, in-memory image proc
 ## Features
 
 - **Multiple Compression Modes**:
-  - Lossless: Preserves image quality while reducing file size
-  - Web Optimization: Balanced compression for web assets (target ~200KB)
+  - Lossless: Preserves image quality while reducing file size (maintains original format)
+  - Web Optimization: Balanced compression for web assets
+    - Optimized JPEG (default for better compatibility)
+    - Optional WebP format for maximum web performance
+    - Target size ~200KB
   - High Compression: Maximum size reduction for storage/email
+    - Aggressive JPEG compression (default for better compatibility)
+    - Optional WebP format for maximum compression
+    - Target size <100KB
   
 - **Batch Processing**: Process multiple images simultaneously
 - **In-Memory Processing**: No server-side storage of files
 - **Format Support**:
   - Input: JPG, PNG, WebP, TIFF, HEIC
-  - Output: JPG, PNG, WebP
+  - Output: 
+    - Lossless: Same as input format (JPG, PNG, WebP, TIFF)
+    - Web/High Compression: JPEG (default) or WebP (optional)
+  - Format Compatibility:
+    - JPEG: Universal compatibility with all image viewers
+    - WebP: Better compression, but limited compatibility with some desktop applications
 - **User Interface Features**:
   - Drag-and-drop file upload
   - Image preview
@@ -191,19 +202,33 @@ server {
 
 3. **Configure Compression**:
    - Select compression mode:
-     - Lossless: For preserving quality
-     - Web: For balanced compression
-     - High: For maximum size reduction
+     - Lossless: For preserving quality (keeps original format)
+     - Web: For balanced compression (JPEG/WebP)
+     - High: For maximum size reduction (JPEG/WebP)
+   - Choose output format:
+     - JPEG: Best compatibility with all devices and applications
+     - WebP: Better compression for web use (optional)
    - Adjust quality settings if needed
    - Set maximum dimensions (optional)
 
-4. **Process Images**:
-   - Click "Compress" for individual images
-   - Use "Compress Selected" for batch processing
+4. **Format Considerations**:
+   - JPEG output (default):
+     - Works with all image viewers and applications
+     - Good compression ratio
+     - Suitable for photographs and complex images
+   - WebP output (optional):
+     - Better compression ratios
+     - Excellent for web delivery
+     - Limited compatibility with some desktop applications
+     - Best used when targeting web deployment
+
+5. *Process Images**:
+   - Click "Process" for individual images
+   - Use "Process Selected" for batch processing
    - Monitor progress through the progress bars
    - Note: Rate limits apply (60/minute, 1000/day)
 
-5. **Download Results**:
+6. Download Results**:
    - Download individual images
    - Use "Download Selected" for multiple files (creates ZIP)
    - Check compression statistics in the interface
@@ -212,7 +237,7 @@ server {
 
 The application is designed to process files entirely in memory:
 
-- Maximum file size limit: 16MB (configurable)
+- Maximum file size limit: 50MB (configurable)
 - Batch processing uses a queue system
 - Memory is released after each file is processed
 - No temporary files are stored on disk
