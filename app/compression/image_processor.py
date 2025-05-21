@@ -1,6 +1,6 @@
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
-from typing import Tuple, Dict, Optional, List
+from typing import Tuple, Dict, Optional, List, Union
 from dataclasses import dataclass
 
 class CompressionError(Exception):
@@ -172,7 +172,9 @@ class ImageCompressor:
         max_width: Optional[int] = None,
         max_height: Optional[int] = None,
         quality: Optional[int] = None,
-        use_webp: bool = False
+        use_webp: bool = False,
+        watermark_text: Optional[str] = None,
+        watermark_options: Optional[Dict] = None
     ) -> Tuple[bytes, Dict]:
         """
         Compress an image using the specified mode and parameters.
@@ -187,8 +189,26 @@ class ImageCompressor:
         if max_width or max_height:
             img = self._resize_image(img, max_width, max_height)
 
+        # Add watermark if text is provided
+        if watermark_text:
+            # Ensure image is in a mode that supports alpha for watermarking
+            if img.mode not in ('RGBA', 'LA'):
+                img = img.convert('RGBA')
+            # Pass watermark_options as keyword arguments to add_watermark
+            # If watermark_options is None, pass an empty dict to use default values
+            self.add_watermark(img, watermark_text, **(watermark_options or {}))
+
         # Apply compression based on mode
-        compressed_data = self.compression_modes[mode](img, quality, use_webp)
+        if mode == 'lossless':
+            compressed_data = self._compress_lossless(img, quality=quality)
+        elif mode == 'web':
+            compressed_data = self._compress_web(img, quality=quality, use_webp=use_webp)
+        elif mode == 'high':
+            # For 'high' mode, determine if WebP should be used based on the 'use_webp' flag.
+            # _compress_high itself might default to WebP, but this flag can override.
+            compressed_data = self._compress_high(img, quality=quality, use_webp=use_webp)
+        else:
+            raise ValueError(f"Unknown compression mode: {mode}")
         
         # Calculate compression ratio and prepare metadata
         compression_ratio = round(len(compressed_data) / original_size * 100, 2)
@@ -244,3 +264,101 @@ class ImageCompressor:
                 background.paste(img, mask=img.split()[1])
             return background
         return img
+
+    def add_watermark(
+        self,
+        image: Image.Image,
+        text: str,
+        position: Union[Tuple[int, int], str] = 'bottom-right',
+        font_path: Optional[str] = None,
+        font_size: int = 36,
+        color: Tuple[int, int, int, int] = (255, 255, 255, 128), # Default: semi-transparent white
+        opacity: Optional[int] = None # Overrides alpha in color if provided (0-255)
+    ):
+        """
+        Adds a text watermark to an image.
+        """
+        if image.mode != 'RGBA': # Ensure image can handle alpha for opacity
+            image = image.convert('RGBA')
+
+        draw = ImageDraw.Draw(image, 'RGBA') # Create a drawing context
+
+        # Determine the final color and opacity for the text
+        final_color_rgb = color[:3]
+        # Use opacity arg if provided, else use alpha from color tuple, else default (128 from default color)
+        alpha = opacity if opacity is not None else (color[3] if len(color) == 4 else 128)
+        alpha = max(0, min(255, int(alpha))) # Clamp alpha to 0-255
+        final_color = final_color_rgb + (alpha,)
+
+        # Load font
+        try:
+            if font_path:
+                font = ImageFont.truetype(font_path, font_size)
+            else: # Try common system fonts before Pillow's default bitmap font
+                common_fonts = ["arial.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf", "Helvetica.ttf"]
+                font_loaded = False
+                for cf_name in common_fonts:
+                    try:
+                        font = ImageFont.truetype(cf_name, font_size)
+                        font_loaded = True
+                        break
+                    except IOError:
+                        continue
+                if not font_loaded:
+                    font = ImageFont.load_default()
+                    print(f"Warning: Common system fonts not found. Using default Pillow bitmap font. `font_size` may not apply accurately.")
+        except IOError: # Catch error if specified font_path is not found
+            font = ImageFont.load_default()
+            print(f"Warning: Font not found at '{font_path}'. Using default Pillow bitmap font. `font_size` may not apply accurately.")
+        
+        # Calculate text size using textbbox for accuracy if available
+        try:
+            # For Pillow 9.2.0+ textbbox is preferred. anchor 'lt' means (x,y) is top-left of bbox.
+            bbox = draw.textbbox((0, 0), text, font=font, anchor='lt')
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+        except (TypeError, AttributeError): # Fallback for older Pillow versions
+            # textsize is less accurate but widely available
+            text_size_legacy = draw.textsize(text, font=font)
+            text_width = text_size_legacy[0]
+            text_height = text_size_legacy[1]
+
+        img_width, img_height = image.size
+        margin = 10 # Margin from image edges
+
+        # Determine (x, y) coordinates for the top-left of the text
+        if isinstance(position, str):
+            pos_keyword = position.lower()
+            if pos_keyword == 'center':
+                x = (img_width - text_width) / 2
+                y = (img_height - text_height) / 2
+            elif pos_keyword == 'top-left':
+                x = margin
+                y = margin
+            elif pos_keyword == 'top-right':
+                x = img_width - text_width - margin
+                y = margin
+            elif pos_keyword == 'bottom-left':
+                x = margin
+                y = img_height - text_height - margin
+            elif pos_keyword == 'bottom-right':
+                x = img_width - text_width - margin
+                y = img_height - text_height - margin
+            else: # Default to bottom-right for unknown keywords
+                print(f"Warning: Unknown position keyword '{position}'. Defaulting to bottom-right.")
+                x = img_width - text_width - margin
+                y = img_height - text_height - margin
+        elif isinstance(position, tuple) and len(position) == 2 and all(isinstance(coord, (int, float)) for coord in position):
+            x, y = position
+        else: # Default to bottom-right for invalid position types
+            print(f"Warning: Invalid position '{position}'. Defaulting to bottom-right.")
+            x = img_width - text_width - margin
+            y = img_height - text_height - margin
+
+        # Ensure coordinates are integers for drawing
+        draw_x, draw_y = int(x), int(y)
+
+        # Draw the text
+        # The (draw_x, draw_y) is the top-left starting point of the text.
+        draw.text((draw_x, draw_y), text, font=font, fill=final_color)
+        return image # Return the modified image

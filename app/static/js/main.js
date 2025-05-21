@@ -75,9 +75,18 @@
         this.settings = {
           compression: { mode: 'lossless' },
           resize: { mode: 'original', width: null, height: null, maintainAspectRatio: true },
+          watermark: { 
+            text: '', 
+            position: 'bottom-right', 
+            font_size: '', 
+            color: '#00000080', 
+            opacity: 128 
+          },
         };
         this.compressionDisplay = null;
         this.resizeModeDisplay = null;
+        this.watermarkTextDisplay = null;
+        this.watermarkPositionDisplay = null;
         this.resizeDimensionsDisplay = null;
         this.customSizeDisplay = null;
   
@@ -137,6 +146,37 @@
         // Initialize aspect ratio maintenance
         this.initializeAspectRatio();
       }
+
+        // Watermark Modal Elements
+        const watermarkModal = document.getElementById('watermark-modal');
+        const openWatermarkBtn = document.getElementById('open-watermark-settings');
+        const closeWatermarkBtn = document.getElementById('close-watermark-modal');
+        const saveWatermarkBtn = document.getElementById('save-watermark-settings');
+        const watermarkOpacitySlider = document.getElementById('watermark_opacity');
+        const watermarkOpacityValue = document.getElementById('watermark-opacity-value');
+        this.watermarkMDCSelect = null; // To store MDCSelect instance for watermark position
+
+        if (openWatermarkBtn && watermarkModal) {
+            openWatermarkBtn.addEventListener('click', () => this.openModal(watermarkModal));
+            closeWatermarkBtn?.addEventListener('click', () => this.closeModal(watermarkModal));
+            saveWatermarkBtn?.addEventListener('click', () => this.saveWatermarkSettings());
+            if (watermarkOpacitySlider && watermarkOpacityValue) {
+                watermarkOpacitySlider.addEventListener('input', (e) => {
+                    watermarkOpacityValue.textContent = e.target.value;
+                });
+            }
+            // Initialize MDC Select for watermark position
+            const watermarkSelectElement = watermarkModal.querySelector('.mdc-select');
+            if (watermarkSelectElement) {
+                 this.watermarkMDCSelect = mdc.select.MDCSelect.attachTo(watermarkSelectElement);
+                 const hiddenInput = watermarkSelectElement.querySelector('input[type="hidden"]');
+                 if (this.watermarkMDCSelect && hiddenInput) {
+                    this.watermarkMDCSelect.listen('MDCSelect:change', () => {
+                         hiddenInput.value = this.watermarkMDCSelect.value;
+                    });
+                 }
+            }
+        }
   
       initializeAspectRatio() {
         const maintainAspectRatioCheckbox = document.getElementById('maintain-aspect-ratio');
@@ -192,6 +232,8 @@
         this.resizeModeDisplay = document.getElementById('resize-mode-display');
         this.resizeDimensionsDisplay = document.getElementById('resize-dimensions-display');
         this.customSizeDisplay = document.querySelector('.custom-size-display');
+        this.watermarkTextDisplay = document.getElementById('watermark-text-display');
+        this.watermarkPositionDisplay = document.getElementById('watermark-position-display');
       }
   
       loadSettings() {
@@ -221,6 +263,10 @@
           this.resizeDimensionsDisplay.textContent = `${this.settings.resize.width} × ${this.settings.resize.height}px`;
           this.customSizeDisplay.classList.remove('hidden');
         }
+
+        // Update watermark display
+        this.watermarkTextDisplay.textContent = this.settings.watermark.text || 'None';
+        this.watermarkPositionDisplay.textContent = this.getWatermarkPositionDisplay(this.settings.watermark.position);
       }
   
       getCompressionModeDisplay(mode) {
@@ -230,6 +276,17 @@
           high: 'Maximum Compression',
         };
         return modes[mode] || 'Unknown';
+      }
+
+      getWatermarkPositionDisplay(position) {
+        const positions = {
+            'bottom-right': 'Bottom Right',
+            'bottom-left': 'Bottom Left',
+            'top-right': 'Top Right',
+            'top-left': 'Top Left',
+            'center': 'Center',
+        };
+        return positions[position] || 'Bottom Right';
       }
   
       applySettingsToControls() {
@@ -254,6 +311,22 @@
             customSizeControls.classList.remove('hidden');
           }
         }
+
+        // Apply watermark settings
+        document.getElementById('watermark_text').value = this.settings.watermark.text;
+        
+        // Set MDCSelect value for watermark position
+        if (this.watermarkMDCSelect) {
+            this.watermarkMDCSelect.value = this.settings.watermark.position;
+        } else { // Fallback if MDCSelect not initialized yet, set hidden input directly
+            document.getElementById('watermark_position').value = this.settings.watermark.position;
+        }
+
+        document.getElementById('watermark_font_size').value = this.settings.watermark.font_size;
+        document.getElementById('watermark_color').value = this.settings.watermark.color;
+        const opacitySlider = document.getElementById('watermark_opacity');
+        opacitySlider.value = this.settings.watermark.opacity;
+        document.getElementById('watermark-opacity-value').textContent = this.settings.watermark.opacity;
       }
   
       saveCompressionSettings() {
@@ -283,6 +356,18 @@
           this.saveSettings();
           this.closeModal(document.getElementById('resize-modal'));
         }
+      }
+
+      saveWatermarkSettings() {
+        this.settings.watermark = {
+            text: document.getElementById('watermark_text').value.trim(),
+            position: document.getElementById('watermark_position').value, // Hidden input holds MDCSelect value
+            font_size: document.getElementById('watermark_font_size').value.trim(),
+            color: document.getElementById('watermark_color').value.trim(),
+            opacity: parseInt(document.getElementById('watermark_opacity').value, 10),
+        };
+        this.saveSettings();
+        this.closeModal(document.getElementById('watermark-modal'));
       }
   
       openModal(modal) {
@@ -568,6 +653,18 @@
             if (settings.resize.mode === 'custom') {
                 formData.append('max_width', settings.resize.width);
                 formData.append('max_height', settings.resize.height);
+            }
+
+            // Add watermark settings to formData
+            const watermarkSettings = settings.watermark;
+            if (watermarkSettings.text) {
+                formData.append('watermark_text', watermarkSettings.text);
+                // Only send other watermark options if text is present
+                if (watermarkSettings.position) formData.append('watermark_position', watermarkSettings.position);
+                if (watermarkSettings.font_size) formData.append('watermark_font_size', watermarkSettings.font_size);
+                if (watermarkSettings.color) formData.append('watermark_color', watermarkSettings.color);
+                // Opacity is a number, so it will always have a value (default 128 if not changed)
+                formData.append('watermark_opacity', watermarkSettings.opacity.toString());
             }
     
             const response = await fetch('/process', {

@@ -85,6 +85,53 @@ def process_image():
         max_height = request.form.get('max_height', type=int)
         quality = request.form.get('quality', type=int)
         use_webp = request.form.get('use_webp', 'false').lower() == 'true'
+
+        # Watermark parameters
+        watermark_text = request.form.get('watermark_text')
+        watermark_options = {}
+
+        watermark_position = request.form.get('watermark_position')
+        if watermark_position:
+            watermark_options['position'] = watermark_position
+
+        watermark_font_size_str = request.form.get('watermark_font_size')
+        if watermark_font_size_str:
+            try:
+                font_size = int(watermark_font_size_str)
+                if font_size > 0:
+                    watermark_options['font_size'] = font_size
+                else:
+                    current_app.logger.warning(f"Invalid watermark font size: {watermark_font_size_str}")
+            except ValueError:
+                current_app.logger.warning(f"Non-integer watermark font size: {watermark_font_size_str}")
+
+        watermark_color_hex = request.form.get('watermark_color')
+        if watermark_color_hex:
+            hex_val = watermark_color_hex.lstrip('#')
+            color_tuple = None
+            try:
+                if len(hex_val) == 6: # RRGGBB
+                    color_tuple = tuple(int(hex_val[i:i+2], 16) for i in (0, 2, 4))
+                elif len(hex_val) == 8: # RRGGBBAA
+                    color_tuple = tuple(int(hex_val[i:i+2], 16) for i in (0, 2, 4, 6))
+                else:
+                    current_app.logger.warning(f"Invalid hex color string length: {watermark_color_hex}")
+                
+                if color_tuple:
+                    watermark_options['color'] = color_tuple
+            except ValueError:
+                current_app.logger.warning(f"Invalid hex color string value: {watermark_color_hex}")
+        
+        watermark_opacity_str = request.form.get('watermark_opacity')
+        if watermark_opacity_str:
+            try:
+                opacity = int(watermark_opacity_str)
+                if 0 <= opacity <= 255:
+                    watermark_options['opacity'] = opacity
+                else:
+                    current_app.logger.warning(f"Watermark opacity out of range (0-255): {opacity}")
+            except ValueError:
+                current_app.logger.warning(f"Invalid watermark opacity value: {watermark_opacity_str}")
         
         try:
             # Read the uploaded file
@@ -110,7 +157,9 @@ def process_image():
                 max_width if resize_mode == 'custom' else None,
                 max_height if resize_mode == 'custom' else None,
                 quality,
-                use_webp
+                use_webp,
+                watermark_text=watermark_text if watermark_text else None,
+                watermark_options=watermark_options if watermark_text and watermark_options else None
             )
             
             # Convert to hex and validate

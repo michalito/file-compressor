@@ -47,6 +47,20 @@
                         <span class="mdc-button__label">Configure</span>
                     </button>
                 </div>
+
+                <!-- Watermark Settings Summary -->
+                <div class="mdc-card settings-summary watermark-summary">
+                    <h2 class="mdc-typography--headline6">Watermark Options</h2>
+                    <div class="current-settings">
+                        <p class="setting-value">Text: <span id="watermark-text-display">None</span></p>
+                        <p class="setting-value">Position: <span id="watermark-position-display">Bottom Right</span></p>
+                    </div>
+                    <button class="mdc-button mdc-button--outlined" id="open-watermark-settings">
+                        <span class="mdc-button__ripple"></span>
+                        <i class="material-icons mdc-button__icon">branding_watermark</i>
+                        <span class="mdc-button__label">Configure</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -273,6 +287,116 @@
         </div>
     </div>
 </div>
+
+<!-- Watermark Settings Modal -->
+<div class="modal-overlay hidden" id="watermark-modal">
+    <div class="mdc-card modal-content">
+        <h2 class="mdc-typography--headline6">Watermark Settings</h2>
+        <div class="modal-body">
+            <!-- Watermark Text -->
+            <div class="mdc-text-field mdc-text-field--outlined full-width-input" data-mdc-auto-init="MDCTextField">
+                <input type="text" id="watermark_text" name="watermark_text" class="mdc-text-field__input" placeholder="Enter watermark text">
+                <div class="mdc-notched-outline">
+                    <div class="mdc-notched-outline__leading"></div>
+                    <div class="mdc-notched-outline__notch">
+                        <label for="watermark_text" class="mdc-floating-label">Watermark Text</label>
+                    </div>
+                    <div class="mdc-notched-outline__trailing"></div>
+                </div>
+            </div>
+
+            <!-- Watermark Position -->
+            <div class="mdc-select mdc-select--outlined full-width-input" data-mdc-auto-init="MDCSelect">
+                <div class="mdc-select__anchor">
+                    <span class="mdc-select__ripple"></span>
+                    <span class="mdc-floating-label">Position</span>
+                    <span class="mdc-select__selected-text-container">
+                        <span class="mdc-select__selected-text"></span>
+                    </span>
+                    <span class="mdc-select__dropdown-icon">
+                        <svg class="mdc-select__dropdown-icon-graphic" viewBox="7 10 10 5" focusable="false">
+                            <polygon class="mdc-select__dropdown-icon-inactive" stroke="none" fill-rule="evenodd" points="7 10 12 15 17 10"></polygon>
+                            <polygon class="mdc-select__dropdown-icon-active" stroke="none" fill-rule="evenodd" points="7 15 12 10 17 15"></polygon>
+                        </svg>
+                    </span>
+                    <span class="mdc-line-ripple"></span>
+                    <div class="mdc-notched-outline">
+                        <div class="mdc-notched-outline__leading"></div>
+                        <div class="mdc-notched-outline__notch"></div>
+                        <div class="mdc-notched-outline__trailing"></div>
+                    </div>
+                </div>
+                <div class="mdc-select__menu mdc-menu mdc-menu-surface mdc-menu-surface--fullwidth">
+                    <ul class="mdc-list" role="listbox">
+                        <li class="mdc-list-item mdc-list-item--selected" data-value="bottom-right" aria-selected="true">
+                            <span class="mdc-list-item__ripple"></span>
+                            <span class="mdc-list-item__text">Bottom Right</span>
+                        </li>
+                        <li class="mdc-list-item" data-value="bottom-left">
+                            <span class="mdc-list-item__ripple"></span>
+                            <span class="mdc-list-item__text">Bottom Left</span>
+                        </li>
+                        <li class="mdc-list-item" data-value="top-right">
+                            <span class="mdc-list-item__ripple"></span>
+                            <span class="mdc-list-item__text">Top Right</span>
+                        </li>
+                        <li class="mdc-list-item" data-value="top-left">
+                            <span class="mdc-list-item__ripple"></span>
+                            <span class="mdc-list-item__text">Top Left</span>
+                        </li>
+                        <li class="mdc-list-item" data-value="center">
+                            <span class="mdc-list-item__ripple"></span>
+                            <span class="mdc-list-item__text">Center</span>
+                        </li>
+                    </ul>
+                </div>
+                <!-- Hidden input to store the actual value -->
+                <input type="hidden" id="watermark_position" name="watermark_position" value="bottom-right">
+            </div>
+            
+            <!-- Watermark Font Size -->
+            <div class="mdc-text-field mdc-text-field--outlined full-width-input" data-mdc-auto-init="MDCTextField">
+                <input type="number" id="watermark_font_size" name="watermark_font_size" class="mdc-text-field__input" placeholder="Font Size (e.g., 36)" min="1">
+                <div class="mdc-notched-outline">
+                    <div class="mdc-notched-outline__leading"></div>
+                    <div class="mdc-notched-outline__notch">
+                         <label for="watermark_font_size" class="mdc-floating-label">Font Size</label>
+                    </div>
+                    <div class="mdc-notched-outline__trailing"></div>
+                </div>
+            </div>
+
+            <!-- Watermark Color -->
+            <div class="mdc-text-field mdc-text-field--outlined full-width-input" data-mdc-auto-init="MDCTextField">
+                <input type="text" id="watermark_color" name="watermark_color" class="mdc-text-field__input" placeholder="Color (e.g., #RRGGBBAA)" value="#00000080">
+                 <div class="mdc-notched-outline">
+                    <div class="mdc-notched-outline__leading"></div>
+                    <div class="mdc-notched-outline__notch">
+                        <label for="watermark_color" class="mdc-floating-label">Color (Hex)</label>
+                    </div>
+                    <div class="mdc-notched-outline__trailing"></div>
+                </div>
+            </div>
+
+            <!-- Watermark Opacity -->
+            <div class="form-field-container">
+                <label for="watermark_opacity" class="mdc-typography--body1">Opacity: <span id="watermark-opacity-value">128</span></label>
+                <input type="range" id="watermark_opacity" name="watermark_opacity" class="full-width-input slider" min="0" max="255" value="128">
+            </div>
+
+        </div>
+        <div class="modal-actions">
+            <button class="mdc-button" id="close-watermark-modal">
+                <span class="mdc-button__ripple"></span>
+                <span class="mdc-button__label">Cancel</span>
+            </button>
+            <button class="mdc-button mdc-button--raised" id="save-watermark-settings">
+                <span class="mdc-button__ripple"></span>
+                <span class="mdc-button__label">Save Settings</span>
+            </button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -280,17 +404,18 @@
 <script>
     // Initialize Material Components
     window.addEventListener('load', function() {
-        document.querySelectorAll('.mdc-checkbox').forEach(function(element) {
-            new mdc.checkbox.MDCCheckbox(element);
-        });
-        document.querySelectorAll('.mdc-radio').forEach(function(element) {
-            new mdc.radio.MDCRadio(element);
-        });
-        document.querySelectorAll('.mdc-button').forEach(function(element) {
-            new mdc.ripple.MDCRipple(element);
-        });
-        document.querySelectorAll('.mdc-text-field').forEach(function(element) {
-            new mdc.textField.MDCTextField(element);
+        mdc.autoInit(); // Initialize all MDC components
+
+        // Specific initialization for MDCSelect if autoInit doesn't cover complex cases fully
+        document.querySelectorAll('.mdc-select').forEach(function(element) {
+            const select = new mdc.select.MDCSelect(element);
+            // Link the hidden input to the MDCSelect component value
+            const hiddenInput = element.querySelector('input[type="hidden"]');
+            if (hiddenInput) {
+                select.listen('MDCSelect:change', () => {
+                    hiddenInput.value = select.value;
+                });
+            }
         });
     });
 </script>
