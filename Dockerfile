@@ -73,12 +73,13 @@ EXPOSE 8000
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:8000", \
-     "--workers", "4", \
+     "--workers", "2", \
      "--threads", "2", \
      "--timeout", "120", \
      "--keep-alive", "5", \
      "--worker-class", "sync", \
      "--worker-connections", "1000", \
+     "--preload", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
      "run:app"]

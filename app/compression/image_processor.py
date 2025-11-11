@@ -24,6 +24,7 @@ class ValidationResult:
     is_valid: bool
     errors: List[str]
     warnings: List[str]
+    image: Optional[Image.Image] = None  # Return the opened image to avoid reopening
 
 class ImageCompressor:
     def __init__(self, max_file_size_mb: int = 10):
@@ -37,53 +38,58 @@ class ImageCompressor:
     def validate_image(self, image_data: bytes) -> ValidationResult:
         """
         Validate image data before processing.
+        Returns ValidationResult with opened image to avoid reopening.
         """
         errors = []
         warnings = []
-        
+        img = None
+
         # Check file size
         if len(image_data) > self.max_file_size:
             errors.append(f"File size exceeds maximum limit of {self.max_file_size // (1024 * 1024)}MB")
-        
+
         try:
             # Try to open the image to validate format
             img = Image.open(io.BytesIO(image_data))
-            
+
             # Check format
             if img.format not in ['JPEG', 'PNG', 'WEBP', 'TIFF']:
                 errors.append(f"Unsupported image format: {img.format}")
-            
+
             # Check dimensions
             width, height = img.size
             if width * height > 40000000:  # e.g., larger than 8000x5000
                 warnings.append("Image dimensions are very large and may require significant processing time")
-            
+
             # Check color mode
             if img.mode not in ['RGB', 'RGBA', 'L']:
                 warnings.append(f"Unusual color mode: {img.mode}. Conversion may affect quality")
-                
+
         except Exception as e:
             errors.append(f"Invalid image file: {str(e)}")
-        
+            img = None
+
         return ValidationResult(
             is_valid=len(errors) == 0,
             errors=errors,
-            warnings=warnings
+            warnings=warnings,
+            image=img if len(errors) == 0 else None
         )
 
-    def _compress_lossless(self, img: Image.Image, quality: Optional[int] = None) -> bytes:
+    def _compress_lossless(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = False) -> bytes:
         """
         Lossless compression - maintains original quality while reducing file size.
+        Note: use_webp parameter is ignored in lossless mode as it preserves original format.
         """
         output = io.BytesIO()
         save_format = img.format if img.format else 'PNG'
-        
+
         save_params = {
             'format': save_format,
             'optimize': True,
             'quality': quality if quality is not None else 95
         }
-        
+
         # Add specific parameters for PNG
         if save_format == 'PNG':
             save_params.update({
@@ -97,26 +103,39 @@ class ImageCompressor:
                 'quality': quality if quality is not None else 95,
                 'progressive': True
             })
-            
+
         img.save(output, **save_params)
         return output.getvalue()
 
     def _compress_web(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = True) -> bytes:
         """
         Web optimization - balanced compression for web use.
+        OPTIMIZATION: Only convert color mode if necessary.
         """
         output = io.BytesIO()
-        
-        # Convert to appropriate mode
-        if img.mode in ('RGBA', 'LA'):
-            processed_img = img.convert('RGBA' if use_webp else 'RGB')
+
+        # OPTIMIZATION: Only convert if needed
+        if use_webp:
+            # WebP supports RGBA, so only convert if needed
+            if img.mode in ('RGBA', 'LA'):
+                processed_img = img if img.mode == 'RGBA' else img.convert('RGBA')
+            elif img.mode == 'RGB':
+                processed_img = img  # Already in correct mode
+            else:
+                processed_img = img.convert('RGB')
         else:
-            processed_img = img.convert('RGB')
-            
+            # JPEG doesn't support transparency, so convert RGBA to RGB
+            if img.mode in ('RGBA', 'LA'):
+                processed_img = img.convert('RGB')
+            elif img.mode == 'RGB':
+                processed_img = img  # Already in correct mode
+            else:
+                processed_img = img.convert('RGB')
+
         if use_webp:
             # Save as WebP with web-optimized settings
             processed_img.save(
-                output, 
+                output,
                 format='WEBP',
                 quality=quality if quality is not None else 75,
                 method=4,  # 0-6, higher means better compression but slower
@@ -132,37 +151,51 @@ class ImageCompressor:
                 optimize=True,
                 progressive=True
             )
-        
+
         return output.getvalue()
 
     def _compress_high(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = False) -> bytes:
         """
         High compression - maximum size reduction.
+        OPTIMIZATION: Only convert color mode if necessary, respect use_webp parameter.
         """
         output = io.BytesIO()
-        
-        # Convert RGBA images to RGB with white background
+
+        # OPTIMIZATION: Only convert if needed
         if img.mode in ('RGBA', 'LA'):
+            # Remove transparency with white background (required for JPEG)
             background = Image.new('RGB', img.size, (255, 255, 255))
             if img.mode == 'RGBA':
                 background.paste(img, mask=img.split()[3])
             else:
                 background.paste(img, mask=img.split()[1])
             processed_img = background
+        elif img.mode == 'RGB':
+            processed_img = img  # Already in correct mode
         else:
             processed_img = img.convert('RGB')
-            
-        # Save as WebP with maximum compression
-        processed_img.save(
-            output,
-            format='WEBP',
-            quality=quality if quality is not None else 40,
-            method=6,  # Maximum compression effort
-            lossless=False,
-            exact=False,
-            minimize_size=True
-        )
-        
+
+        # Save in requested format (WebP or JPEG)
+        if use_webp:
+            processed_img.save(
+                output,
+                format='WEBP',
+                quality=quality if quality is not None else 40,
+                method=6,  # Maximum compression effort
+                lossless=False,
+                exact=False,
+                minimize_size=True
+            )
+        else:
+            # High compression JPEG
+            processed_img.save(
+                output,
+                format='JPEG',
+                quality=quality if quality is not None else 60,
+                optimize=True,
+                progressive=True
+            )
+
         return output.getvalue()
 
     def compress_image(
@@ -172,13 +205,27 @@ class ImageCompressor:
         max_width: Optional[int] = None,
         max_height: Optional[int] = None,
         quality: Optional[int] = None,
-        use_webp: bool = False
+        use_webp: bool = False,
+        preloaded_image: Optional[Image.Image] = None
     ) -> Tuple[bytes, Dict]:
         """
         Compress an image using the specified mode and parameters.
+
+        Args:
+            image_data: Original image bytes (for size calculation)
+            mode: Compression mode ('lossless', 'web', 'high')
+            max_width: Maximum width for resizing
+            max_height: Maximum height for resizing
+            quality: Quality setting
+            use_webp: Whether to use WebP format
+            preloaded_image: Pre-opened PIL Image (avoids reopening)
         """
-        # Open the image
-        img = Image.open(io.BytesIO(image_data))
+        # Use preloaded image if available, otherwise open it
+        if preloaded_image is not None:
+            img = preloaded_image
+        else:
+            img = Image.open(io.BytesIO(image_data))
+
         original_format = img.format
         original_size = len(image_data)
         original_dimensions = img.size
@@ -189,14 +236,14 @@ class ImageCompressor:
 
         # Apply compression based on mode
         compressed_data = self.compression_modes[mode](img, quality, use_webp)
-        
+
         # Calculate compression ratio and prepare metadata
         compression_ratio = round(len(compressed_data) / original_size * 100, 2)
-        
+
         # If high compression didn't achieve better than 50% reduction,
-        # try more aggressive settings
+        # try more aggressive settings (OPTIMIZATION: Only if ratio is poor)
         if mode == 'high' and compression_ratio > 50:
-            compressed_data = self._compress_high(img, quality=30)
+            compressed_data = self._compress_high(img, quality=30, use_webp=use_webp)
             compression_ratio = round(len(compressed_data) / original_size * 100, 2)
 
         metadata = {

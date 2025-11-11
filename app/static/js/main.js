@@ -1,5 +1,34 @@
 // Wrap the entire code in an IIFE or module to prevent polluting the global namespace
 (() => {
+    // Helper function to get CSRF token
+    function getCSRFToken() {
+        const token = document.querySelector('meta[name="csrf-token"]');
+        return token ? token.getAttribute('content') : '';
+    }
+
+    // OPTIMIZATION: Debounce helper to reduce unnecessary function calls
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    // OPTIMIZATION: Fast hex-to-binary conversion helper
+    function hexToUint8Array(hexString) {
+      const length = hexString.length / 2;
+      const uint8Array = new Uint8Array(length);
+      for (let i = 0; i < length; i++) {
+        uint8Array[i] = parseInt(hexString.substr(i * 2, 2), 16);
+      }
+      return uint8Array;
+    }
+
     // LoadingManager class to manage the global loader and progress bar
     class LoadingManager {
       constructor() {
@@ -48,12 +77,13 @@
       // Initialize theme toggle
       initializeTheme();
   
-      // Add scroll listener for batch controls shadow
+      // Add scroll listener for batch controls shadow (OPTIMIZATION: debounced)
       const batchControls = document.querySelector('.batch-controls');
       if (batchControls) {
-        window.addEventListener('scroll', () => {
+        const handleScroll = debounce(() => {
           batchControls.classList.toggle('scrolled', window.scrollY > 64);
-        });
+        }, 150);
+        window.addEventListener('scroll', handleScroll);
       }
   
       // Only proceed if on the main page
@@ -415,12 +445,13 @@
         this.hideProgress();
       }
     }
-  
+
     // ImageCompressor class to handle image compression and resizing
     class ImageCompressor {
       constructor(settingsManager, batchProcessor) {
           this.selectedFiles = new Set();
           this.fileMap = new Map();
+          this.compressedDataMap = new Map(); // OPTIMIZATION: Store compressed data in Map, not DOM
           this.template = document.getElementById('image-tile-template');
           this.previewArea = document.getElementById('preview-area');
           this.settingsManager = settingsManager;
@@ -570,6 +601,7 @@
                 formData.append('max_height', settings.resize.height);
             }
     
+            formData.append('csrf_token', getCSRFToken());
             const response = await fetch('/process', {
                 method: 'POST',
                 body: formData,
@@ -581,10 +613,15 @@
             }
     
             const result = await response.json();
-    
-            container.setAttribute('data-compressed-data', result.compressed_data);
+
+            // OPTIMIZATION: Store compressed data in Map instead of DOM attribute
+            const fileId = container.dataset.fileId;
+            this.compressedDataMap.set(fileId, {
+                data: result.compressed_data,
+                filename: result.filename
+            });
             container.setAttribute('data-compressed-filename', result.filename);
-    
+
             downloadButton.disabled = false;
     
             // Update both processing status indicators
@@ -641,7 +678,8 @@
   
           const settings = this.settingsManager.getSettings();
           formData.append('mode', settings.compression.mode);
-  
+          formData.append('csrf_token', getCSRFToken());
+
           const response = await fetch('/compress', {
             method: 'POST',
             body: formData,
@@ -653,12 +691,17 @@
           }
   
           const result = await response.json();
-  
-          container.setAttribute('data-compressed-data', result.compressed_data);
+
+          // OPTIMIZATION: Store compressed data in Map instead of DOM attribute
+          const fileId = container.dataset.fileId;
+          this.compressedDataMap.set(fileId, {
+              data: result.compressed_data,
+              filename: result.filename
+          });
           container.setAttribute('data-compressed-filename', result.filename);
-  
+
           downloadButton.disabled = false;
-  
+
           this.updateProcessingStatus(container, 'compressed');
   
           this.updateFinalInformation(container, result.metadata);
@@ -694,7 +737,8 @@
             if (settings.resize.width) formData.append('max_width', settings.resize.width);
             if (settings.resize.height) formData.append('max_height', settings.resize.height);
           }
-  
+          formData.append('csrf_token', getCSRFToken());
+
           const response = await fetch('/resize', {
             method: 'POST',
             body: formData,
@@ -706,10 +750,15 @@
           }
   
           const result = await response.json();
-  
-          container.setAttribute('data-compressed-data', result.compressed_data);
+
+          // OPTIMIZATION: Store compressed data in Map instead of DOM attribute
+          const fileId = container.dataset.fileId;
+          this.compressedDataMap.set(fileId, {
+              data: result.compressed_data,
+              filename: result.filename
+          });
           container.setAttribute('data-compressed-filename', result.filename);
-  
+
           this.updateProcessingStatus(container, 'resized');
           downloadButton.disabled = false;
           this.updateFinalInformation(container, result.metadata);
@@ -729,17 +778,22 @@
 
       async downloadCompressedFile(container) {
         try {
-            const compressedData = container.getAttribute('data-compressed-data');
-            const filename = container.getAttribute('data-compressed-filename');
+            // OPTIMIZATION: Retrieve compressed data from Map instead of DOM
+            const fileId = container.dataset.fileId;
+            const compressedInfo = this.compressedDataMap.get(fileId);
 
-            if (!compressedData || !filename) {
+            if (!compressedInfo || !compressedInfo.data || !compressedInfo.filename) {
                 throw new Error('Missing compressed data or filename');
             }
+
+            const compressedData = compressedInfo.data;
+            const filename = compressedInfo.filename;
 
             const response = await fetch('/download', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken(),
                 },
                 body: JSON.stringify({
                     compressed_data: compressedData,
@@ -812,14 +866,13 @@
                 loadingManager.show();
 
                 for (const tile of selectedTiles) {
-                    const compressedData = tile.getAttribute('data-compressed-data');
-                    const filename = tile.getAttribute('data-compressed-filename');
+                    // OPTIMIZATION: Retrieve from Map and use fast hex conversion
+                    const fileId = tile.dataset.fileId;
+                    const compressedInfo = this.compressedDataMap.get(fileId);
 
-                    if (compressedData && filename) {
-                        const binaryData = new Uint8Array(
-                            compressedData.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
-                        );
-                        zip.file(filename, binaryData);
+                    if (compressedInfo && compressedInfo.data && compressedInfo.filename) {
+                        const binaryData = hexToUint8Array(compressedInfo.data);
+                        zip.file(compressedInfo.filename, binaryData);
                     }
                 }
 
@@ -955,78 +1008,11 @@
         statusIndicator.classList.remove('hidden');
         setTimeout(() => statusIndicator.classList.add('show'), 50);
       }
-  
-      updateFinalInformation(container, metadata) {
-        const processedInfo = container.querySelector('.processed-info');
-        processedInfo.classList.remove('hidden');
-  
-        const finalWidth = metadata.final_dimensions[0];
-        const finalHeight = metadata.final_dimensions[1];
-        const finalAspectRatio = (finalWidth / finalHeight).toFixed(2);
-  
-        container.querySelector('.final-size').textContent = this.formatFileSize(metadata.compressed_size);
-        container.querySelector('.final-dimensions').textContent = `${finalWidth} × ${finalHeight}px`;
-        container.querySelector('.final-aspect-ratio').textContent = finalAspectRatio;
-  
-        const savings = Math.round((1 - metadata.compressed_size / metadata.original_size) * 100);
-        container.querySelector('.space-saved').textContent = `${savings}%`;
-      }
-  
-      showWarnings(container, warnings) {
-        const existingWarnings = container.querySelector('.warning-message');
-        existingWarnings?.remove();
-  
-        const warningDiv = document.createElement('div');
-        warningDiv.className = 'warning-message';
-        warningDiv.innerHTML = warnings
-          .map(
-            (warning) => `
-          <div class="mdc-chip">
-            <i class="material-icons mdc-chip__icon mdc-chip__icon--leading">warning</i>
-            <span class="mdc-chip__text">${warning}</span>
-          </div>
-        `
-          )
-          .join('');
-  
-        container.appendChild(warningDiv);
-      }
-  
-      showError(container, message) {
-        const existingError = container.querySelector('.error-message');
-        existingError?.remove();
-  
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message';
-        errorDiv.innerHTML = `
-          <div class="mdc-chip error-chip">
-            <i class="material-icons mdc-chip__icon mdc-chip__icon--leading">error</i>
-            <span class="mdc-chip__text">${message}</span>
-          </div>
-        `;
-  
-        container.appendChild(errorDiv);
-        setTimeout(() => container.querySelector('.error-message')?.remove(), 5000);
-      }
-  
-      formatFileSize(bytes) {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-      }
-  
-      initializeMDCComponents(tile) {
-        tile.querySelectorAll('.mdc-checkbox').forEach((el) => new mdc.checkbox.MDCCheckbox(el));
-        tile.querySelectorAll('.mdc-button').forEach((el) => new mdc.ripple.MDCRipple(el));
-        tile.querySelectorAll('.mdc-linear-progress').forEach((el) => new mdc.linearProgress.MDCLinearProgress(el));
-        tile.querySelectorAll('.mdc-chip').forEach((el) => new mdc.chips.MDCChip(el));
-      }
 
       removeTile(tile) {
         const fileId = tile.dataset.fileId;
         this.fileMap.delete(fileId);
+        this.compressedDataMap.delete(fileId); // OPTIMIZATION: Clean up compressed data
         tile.remove();
       }
       // ... Additional methods for resizing images, downloading files, and updating UI ...
@@ -1063,7 +1049,10 @@
   
       fetch('/theme', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken(),
+        },
         body: JSON.stringify({ theme: newTheme }),
       }).catch((error) => console.error('Failed to sync theme with server:', error));
     }

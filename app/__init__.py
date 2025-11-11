@@ -4,6 +4,7 @@ import os
 from werkzeug.security import generate_password_hash
 from .auth import Auth
 from werkzeug.middleware.proxy_fix import ProxyFix
+from flask_wtf.csrf import CSRFProtect
 
 def create_app():
     app = Flask(__name__)
@@ -18,35 +19,43 @@ def create_app():
     
     # Load environment variables from .env file
     load_dotenv()
-    
-    # Fallback password that will always work
-    FALLBACK_PASSWORD = ""
-    
-    # Generate both password hashes
+
+    # Get password from environment
     env_password = os.getenv('APP_PASSWORD')
-    fallback_hash = generate_password_hash(FALLBACK_PASSWORD)
-    env_hash = generate_password_hash(env_password) if env_password else None
-    
-    # Store both hashes in config
+    if not env_password:
+        app.logger.error("CRITICAL: APP_PASSWORD not set in environment variables")
+        raise ValueError("APP_PASSWORD must be set in environment variables")
+
+    # Generate password hash
+    env_hash = generate_password_hash(env_password)
+
+    # Determine if we're in production
+    is_production = os.getenv('FLASK_ENV', 'development') == 'production'
+
+    # Store configuration
     app.config.update(
         MAX_CONTENT_LENGTH=50 * 1024 * 1024,  # 50MB max file size, adjust as needed
         SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),
+        WTF_CSRF_SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),  # CSRF secret
+        WTF_CSRF_TIME_LIMIT=None,  # No time limit for CSRF tokens
+        WTF_CSRF_ENABLED=True,  # Enable CSRF protection
+        WTF_CSRF_CHECK_DEFAULT=True,  # Check CSRF by default
         PASSWORD_HASH=env_hash,
-        FALLBACK_HASH=fallback_hash,
-        SESSION_COOKIE_SECURE=False,  # Change to False for testing
-        SESSION_COOKIE_HTTPONLY=False,
-        SESSION_COOKIE_SAMESITE='Lax',  # Change to Lax for testing
+        SESSION_COOKIE_SECURE=is_production,  # Secure in production
+        SESSION_COOKIE_HTTPONLY=True,  # Always httponly for security
+        SESSION_COOKIE_SAMESITE='Lax',  # Use Lax for both dev and prod to allow CSRF
         PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
-        SESSION_TYPE='filesystem',  # Add this line
+        SESSION_TYPE='filesystem',
         REQUEST_TIMEOUT=60,
         PROPAGATE_EXCEPTIONS=True
     )
 
     # Add logging for debugging
     app.logger.info("=== Application Initialization ===")
-    app.logger.info(f"SECRET_KEY set: {'SECRET_KEY' in app.config}")
-    app.logger.info(f"ENV PASSWORD hash set: {bool(env_hash)}")
-    app.logger.info(f"FALLBACK PASSWORD hash set: {bool(fallback_hash)}")
+    app.logger.info(f"Environment: {'production' if is_production else 'development'}")
+    app.logger.info(f"SECRET_KEY set: {app.config['SECRET_KEY'] != 'dev-key-please-change'}")
+    app.logger.info(f"PASSWORD hash set: {bool(env_hash)}")
+    app.logger.info(f"Secure cookies: {app.config['SESSION_COOKIE_SECURE']}")
 
     # Configure ProxyFix for proper header handling
     if os.getenv('PROXY_FIX', 'false').lower() == 'true':
@@ -64,6 +73,10 @@ def create_app():
     except OSError:
         pass
         
+    # Initialize CSRF protection
+    csrf = CSRFProtect()
+    csrf.init_app(app)
+
     # Initialize authentication
     auth = Auth()
     auth.init_app(app)

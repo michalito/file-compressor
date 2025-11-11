@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   web:
     build: .
@@ -8,8 +6,9 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - APP_PASSWORD=${APP_PASSWORD}
-      # - FLASK_DEBUG=1  # Add this for debugging
-      - PROXY_FIX=true
+      - FLASK_ENV=development  # Set to development for testing
+      - FLASK_DEBUG=1  # Add this for debugging
+      - PROXY_FIX=false  # Disable proxy fix for local testing
     volumes:
       - app_secrets:/app/instance/secrets
       - ./app:/app/app  # Add this for development

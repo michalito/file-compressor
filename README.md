@@ -2,6 +2,149 @@
 
 A web-based image compression tool that provides efficient, in-memory image processing with multiple compression options and batch processing capabilities.
 
+## Quick Start with Docker
+
+### Prerequisites
+- Docker Desktop installed ([Download here](https://www.docker.com/products/docker-desktop))
+- Git (to clone the repository)
+
+### Step-by-Step Instructions
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/file-compressor.git
+   cd file-compressor
+   ```
+
+2. **Create environment file:**
+   ```bash
+   cp example.env .env
+   ```
+
+3. **Edit the .env file with your secure values:**
+   ```bash
+   # Open with your preferred editor
+   nano .env
+   # OR
+   vim .env
+   # OR on macOS
+   open -e .env
+   ```
+
+   Set the following variables:
+   ```env
+   SECRET_KEY=your-very-long-random-secret-key-here
+   APP_PASSWORD=your-secure-password-here
+   ```
+
+   **Important:**
+   - Use a strong, unique password for APP_PASSWORD
+   - Generate a random SECRET_KEY (at least 32 characters)
+   - You can generate a secret key with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+
+4. **Build and start the application:**
+   ```bash
+   docker-compose up --build
+   ```
+
+   This command will:
+   - Build the Docker image
+   - Start the container
+   - Show logs in your terminal
+
+5. **Access the application:**
+   - Open your browser and go to: `http://localhost:8000`
+   - Login with the password you set in the .env file
+
+6. **Stop the application:**
+   - Press `Ctrl+C` in the terminal where docker-compose is running
+   - OR run: `docker-compose down`
+
+### Running in Background (Detached Mode)
+
+To run the application in the background:
+
+```bash
+# Start in background
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f
+
+# Stop the application
+docker-compose down
+```
+
+### Testing the Application
+
+1. **Login:**
+   - Navigate to `http://localhost:8000`
+   - Enter the password from your .env file
+
+2. **Upload and Compress Images:**
+   - Drag and drop images or click to select
+   - Supported formats: JPG, PNG, WebP, TIFF, HEIC
+   - Maximum file size: 50MB per image
+
+3. **Choose Compression Settings:**
+
+   **Compression Modes:**
+   - **Lossless**: Preserves quality, maintains original format
+   - **Web**: Balanced compression (~200KB target)
+   - **High**: Maximum compression (<100KB target)
+
+   **Additional Options:**
+   - Resize dimensions (maintains aspect ratio)
+   - Output format selection (JPEG or WebP)
+   - Quality adjustment slider
+
+4. **Process Images:**
+   - Click "Process" for individual images
+   - Use "Process All" for batch processing
+   - Monitor progress bars during processing
+
+5. **Download Results:**
+   - Download individual compressed images
+   - Select multiple and download as ZIP archive
+   - View compression statistics (size reduction %)
+
+### Troubleshooting
+
+**Container won't start:**
+```bash
+# Check if port 8000 is already in use
+lsof -i :8000  # macOS/Linux
+# OR
+netstat -ano | findstr :8000  # Windows
+
+# Use a different port by editing docker-compose.yml:
+# Change "8000:8000" to "8080:8000" then access via http://localhost:8080
+```
+
+**Permission denied errors:**
+```bash
+# Rebuild with no cache
+docker-compose build --no-cache
+docker-compose up
+```
+
+**Can't login:**
+- Verify APP_PASSWORD is set in .env file
+- Check logs for errors: `docker-compose logs web`
+- Ensure you're using the correct password
+
+**View container status:**
+```bash
+docker-compose ps
+```
+
+**Reset everything:**
+```bash
+docker-compose down -v
+docker system prune -a
+# Then rebuild from step 4
+```
+
 ## Features
 
 - **Multiple Compression Modes**:
@@ -38,46 +181,13 @@ A web-based image compression tool that provides efficient, in-memory image proc
   - Secure session management
   - Protection against brute force attacks
 
-## Requirements
+## System Requirements
 
-- Python 3.11+
-- Docker (optional)
-- Modern web browser with JavaScript enabled
+- **For Docker deployment:** Docker Desktop (includes everything needed)
+- **For manual installation:** Python 3.11+, pip
+- **Browser:** Modern web browser with JavaScript enabled (Chrome, Firefox, Safari, Edge)
 
-## Installation
-
-### Using Docker (Recommended)
-
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd file-compressor
-   ```
-2. Add the .env file and change its variables
-   ```bash
-   cp example.env .env
-   ```
-   ```bash
-   nano .env
-   ```
-3. Build and run with Docker:
-   ```bash
-   docker build -t image-compressor:prod .
-   docker run -d --name image-compressor -p 8000:8000 \
-      -e SECRET_KEY=your-production-secret-key \
-      -e APP_PASSWORD=your-secure-password \
-      image-compressor:prod
-   ```
-   OR with Docker Compose
-   ```bash
-   docker-compose up --build -d
-   ```
-3. Check Logs
-   ```bash
-   docker-compose logs -f
-   ```
-
-The application will be available at `http://localhost:8000`
+## Advanced Docker Operations
 
 ### Monitoring
 
@@ -88,10 +198,13 @@ Monitor your deployment:
 docker-compose ps
 
 # View resource usage
-docker stats image-compressor
+docker stats
 
 # View application logs
 docker-compose logs -f web
+
+# View last 100 lines of logs
+docker-compose logs --tail=100 web
 ```
 
 ### Updates and Maintenance
@@ -109,17 +222,67 @@ docker-compose up -d --build
 docker image prune -f
 ```
 
-### Manual Installation
+### Using Different Ports
+
+If port 8000 is already in use:
+
+1. Edit `docker-compose.yml`
+2. Change the ports section from `"8000:8000"` to `"YOUR_PORT:8000"`
+3. Example for port 3000: `"3000:8000"`
+4. Access the app at `http://localhost:3000`
+
+### Environment Variables
+
+Required environment variables in `.env`:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SECRET_KEY` | Flask secret key for sessions | `your-32-character-random-string` |
+| `APP_PASSWORD` | Password to access the application | `YourSecurePassword123!` |
+| `FLASK_ENV` | Environment mode (optional) | `production` or `development` |
+
+### Docker Commands Reference
+
+```bash
+# Build image only
+docker-compose build
+
+# Start without rebuilding
+docker-compose up -d
+
+# Stop and remove containers
+docker-compose down
+
+# Stop, remove containers AND volumes
+docker-compose down -v
+
+# View real-time logs
+docker-compose logs -f
+
+# Restart a service
+docker-compose restart web
+
+# Execute command in running container
+docker-compose exec web /bin/bash
+
+# Remove all stopped containers and unused images
+docker system prune -a
+```
+
+## Manual Installation (Alternative)
+
+<details>
+<summary>Click to expand manual installation instructions</summary>
 
 1. Clone the repository:
    ```bash
    git clone <repository-url>
-   cd image-compressor
+   cd file-compressor
    ```
 
 2. Create and activate a virtual environment:
    ```bash
-   python -m venv venv
+   python3 -m venv venv
    source venv/bin/activate  # Linux/Mac
    # or
    .\venv\Scripts\activate  # Windows
@@ -132,7 +295,7 @@ docker image prune -f
 
 4. Set up environment variables:
    ```bash
-   cp .env.example .env
+   cp example.env .env
    # Edit .env file with your configuration
    ```
 
@@ -142,6 +305,10 @@ docker image prune -f
    ```
 
 The application will be available at `http://localhost:5000`
+
+**Note:** Manual installation requires handling Python dependencies and potential system-specific issues. Docker is recommended for consistent deployment.
+
+</details>
 
 ## Production Deployment
 
@@ -159,18 +326,29 @@ For production deployment, the application uses Gunicorn as the WSGI server with
 - `APP_PASSWORD`: Required for authentication (must be set to a secure password)
 - `MAX_CONTENT_LENGTH`: Maximum allowed file size in bytes (default: 16MB)
 
-### Security Considerations
+### Security Features
 
-1. Always set a strong `SECRET_KEY` in production
-2. Set a secure `APP_PASSWORD` for authentication
-3. Configure a reverse proxy (e.g., Nginx) in front of Gunicorn
-4. Enable HTTPS in production
-5. Configure appropriate CORS settings if needed
-6. Monitor memory usage for large batch operations
-7. The application includes rate limiting:
-   - 60 operations per minute
-   - 1000 operations per day
-   - 5-minute lockout after 5 failed login attempts
+The application includes comprehensive security measures:
+
+1. **Authentication & Authorization**
+   - Password-based authentication (no default passwords)
+   - Secure session management
+   - Rate limiting: 60 operations/minute, 1000/day
+   - Brute force protection: 5-minute lockout after 5 failed attempts
+
+2. **Data Protection**
+   - CSRF protection on all forms and AJAX requests
+   - Secure cookies in production (HTTPOnly, Secure, SameSite)
+   - Input validation and sanitization
+   - No server-side file storage (all in-memory processing)
+
+3. **Production Security Checklist**
+   - ✅ Set strong `SECRET_KEY` (32+ characters)
+   - ✅ Use secure `APP_PASSWORD`
+   - ✅ Enable HTTPS with reverse proxy
+   - ✅ Set `FLASK_ENV=production`
+   - ✅ Configure firewall rules
+   - ✅ Regular security updates
 
 ### Example Nginx Configuration
 
