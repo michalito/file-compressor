@@ -1,7 +1,7 @@
 from functools import wraps
 from datetime import datetime
 from flask import session, redirect, url_for, request, current_app
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash
 import time
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -29,6 +29,8 @@ class Auth:
         self.login_attempts = {}
         self.max_attempts = 5
         self.lockout_time = 300  # 5 minutes
+        self.cleanup_interval = 600  # Cleanup entries older than 10 minutes
+        self.last_cleanup = time.time()
 
         # Set up rate limits explicitly
         self._setup_rate_limits()
@@ -40,12 +42,15 @@ class Auth:
             "60 per minute, 1000 per day",
             scope="image_processing"
         )
-        
+
         def register_limits():
             # Get the view functions after they're registered
+            process_view = self.app.view_functions.get('main.process_image')
             compress_view = self.app.view_functions.get('main.compress_image')
             resize_view = self.app.view_functions.get('main.resize_image')
-            
+
+            if process_view:
+                processing_limit(process_view)
             if compress_view:
                 processing_limit(compress_view)
             if resize_view:
@@ -61,7 +66,10 @@ class Auth:
     def login(self, password):
         """Attempt to log in with the given password"""
         ip = get_remote_address()
-        
+
+        # Periodically clean up stale login attempt entries
+        self._cleanup_old_attempts()
+
         try:
             # Enhanced debug logging
             current_app.logger.info("\n=== Login Attempt Started ===")
@@ -128,7 +136,27 @@ class Auth:
         """Reset failed attempts for an IP"""
         if ip in self.login_attempts:
             del self.login_attempts[ip]
-    
+
+    def _cleanup_old_attempts(self):
+        """Remove stale entries from login_attempts to prevent memory leak"""
+        current_time = time.time()
+
+        # Only run cleanup periodically
+        if current_time - self.last_cleanup < self.cleanup_interval:
+            return
+
+        self.last_cleanup = current_time
+        stale_ips = [
+            ip for ip, data in self.login_attempts.items()
+            if current_time - data['last_attempt'] > self.cleanup_interval
+        ]
+
+        for ip in stale_ips:
+            del self.login_attempts[ip]
+
+        if stale_ips:
+            current_app.logger.debug(f"Cleaned up {len(stale_ips)} stale login attempt entries")
+
     @staticmethod
     def login_required(f):
         @wraps(f)

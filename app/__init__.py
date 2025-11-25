@@ -8,17 +8,20 @@ from flask_wtf.csrf import CSRFProtect
 
 def create_app():
     app = Flask(__name__)
-    
-    # Add this near the start of create_app()
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
-    app.logger.addHandler(handler)
-    app.logger.setLevel(logging.DEBUG)
-    
+
     # Load environment variables from .env file
     load_dotenv()
+
+    # Configure logging based on environment
+    import logging
+    is_production = os.getenv('FLASK_ENV', 'development') == 'production'
+    log_level = logging.WARNING if is_production else logging.DEBUG
+
+    logging.basicConfig(level=log_level)
+    handler = logging.StreamHandler()
+    handler.setLevel(log_level)
+    app.logger.addHandler(handler)
+    app.logger.setLevel(log_level)
 
     # Get password from environment
     env_password = os.getenv('APP_PASSWORD')
@@ -28,9 +31,6 @@ def create_app():
 
     # Generate password hash
     env_hash = generate_password_hash(env_password)
-
-    # Determine if we're in production
-    is_production = os.getenv('FLASK_ENV', 'development') == 'production'
 
     # Store configuration
     app.config.update(

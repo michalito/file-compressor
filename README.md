@@ -83,7 +83,7 @@ docker-compose down
 
 2. **Upload and Compress Images:**
    - Drag and drop images or click to select
-   - Supported formats: JPG, PNG, WebP, TIFF, HEIC
+   - Supported formats: JPG, PNG, WebP, TIFF
    - Maximum file size: 50MB per image
 
 3. **Choose Compression Settings:**
@@ -161,7 +161,7 @@ docker system prune -a
 - **Batch Processing**: Process multiple images simultaneously
 - **In-Memory Processing**: No server-side storage of files
 - **Format Support**:
-  - Input: JPG, PNG, WebP, TIFF, HEIC
+  - Input: JPG, PNG, WebP, TIFF
   - Output: 
     - Lossless: Same as input format (JPG, PNG, WebP, TIFF)
     - Web/High Compression: JPEG (default) or WebP (optional)
@@ -376,7 +376,7 @@ server {
 2. **Upload Images**:
    - Drag and drop images onto the upload area
    - Click the upload area to select files
-   - Supported formats: JPG, PNG, WebP, TIFF, HEIC
+   - Supported formats: JPG, PNG, WebP, TIFF
 
 3. **Configure Compression**:
    - Select compression mode:

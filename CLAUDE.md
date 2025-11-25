@@ -108,7 +108,7 @@ pip install -r requirements.txt
 - Maximum file size: 50MB (set in app/__init__.py MAX_CONTENT_LENGTH)
 - Session timeout: 30 minutes (PERMANENT_SESSION_LIFETIME)
 - Maximum dimensions checked: 40M pixels triggers warning
-- Supported input formats: JPG, PNG, WebP, TIFF, HEIC (validated in validators.py)
+- Supported input formats: JPG, PNG, WebP, TIFF (validated in validators.py)
 - Output formats: Lossless preserves original; Web/High output JPEG (default) or WebP (optional)
 
 **Testing**:

@@ -11,7 +11,8 @@ from werkzeug.datastructures import FileStorage
 MAX_FILENAME_LENGTH = 255
 MAX_DIMENSION = 10000  # Maximum width/height in pixels
 MIN_DIMENSION = 1
-ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'tiff', 'heic'}
+# Note: HEIC removed - Pillow doesn't support it natively without pillow-heif plugin
+ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'tiff'}
 ALLOWED_COMPRESSION_MODES = {'lossless', 'web', 'high'}
 ALLOWED_RESIZE_MODES = {'original', 'custom'}
 ALLOWED_THEMES = {'light', 'dark'}
@@ -186,9 +187,18 @@ def validate_download_data(compressed_data: str, filename: str) -> Tuple[bool, O
     if not filename:
         return False, "Filename is required"
 
-    # Validate hex data
+    # Validate hex data - check multiple samples to catch corruption
     try:
-        bytes.fromhex(compressed_data[:100])  # Check first 100 chars
+        data_len = len(compressed_data)
+        # Check beginning, middle, and end of the hex string
+        samples = [
+            compressed_data[:100],
+            compressed_data[data_len // 2:data_len // 2 + 100] if data_len > 200 else '',
+            compressed_data[-100:] if data_len > 100 else ''
+        ]
+        for sample in samples:
+            if sample:
+                bytes.fromhex(sample)
     except ValueError:
         return False, "Invalid compressed data format"
 

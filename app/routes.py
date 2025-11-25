@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session
 import io
-from PIL import Image
+from typing import Tuple, Optional, Dict, Any
 from werkzeug.utils import secure_filename
+from werkzeug.datastructures import FileStorage
 from .compression import ImageCompressor
 from .auth import RateLimitExceeded
 from .validators import (
@@ -23,6 +24,65 @@ MIME_TYPES = {
     'WEBP': 'image/webp',
     'TIFF': 'image/tiff'
 }
+
+
+def _process_image_file(
+    file: FileStorage,
+    compression_mode: str,
+    max_width: Optional[int] = None,
+    max_height: Optional[int] = None,
+    quality: Optional[int] = None,
+    use_webp: bool = False
+) -> Tuple[bool, Dict[str, Any], int]:
+    """
+    Shared image processing logic for /process, /compress, and /resize endpoints.
+
+    Returns:
+        Tuple of (success, response_data, status_code)
+    """
+    try:
+        # Read the uploaded file
+        image_data = file.read()
+
+        # Validate the image (returns opened image to avoid reopening)
+        validation = compressor.validate_image(image_data)
+        if not validation.is_valid:
+            return False, {
+                'error': 'Image validation failed',
+                'details': validation.errors,
+                'warnings': validation.warnings
+            }, 400
+
+        # Log warnings if any
+        if validation.warnings:
+            current_app.logger.warning(
+                f"Image processing warnings for {file.filename}: {validation.warnings}"
+            )
+
+        # Process the image using pre-opened image
+        compressed_data, metadata = compressor.compress_image(
+            image_data,
+            compression_mode,
+            max_width,
+            max_height,
+            quality,
+            use_webp,
+            preloaded_image=validation.image
+        )
+
+        # Convert to hex for JSON transport
+        hex_data = compressed_data.hex()
+
+        return True, {
+            'message': 'File processed successfully',
+            'metadata': {**metadata, 'encoding': 'hex'},
+            'compressed_data': hex_data,
+            'warnings': validation.warnings
+        }, 200
+
+    except Exception as e:
+        current_app.logger.error(f"Image processing failed: {str(e)}")
+        return False, {'error': str(e)}, 500
 
 @main.route('/login', methods=['GET', 'POST'])
 def login():
@@ -172,66 +232,27 @@ def process_image():
 @main.route('/compress', methods=['POST'])
 @current_app.auth.login_required
 def compress_image():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-        
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-        
-    if file and file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.tiff')):
-        # Get compression parameters
-        compression_mode = request.form.get('mode', 'lossless')
-        max_width = request.form.get('max_width', type=int)
-        max_height = request.form.get('max_height', type=int)
-        quality = request.form.get('quality', type=int)
-        
-        try:
-            # Read the uploaded file
-            image_data = file.read()
+    # Validate file using centralized validator
+    file = request.files.get('file')
+    is_valid, error_msg = validate_file(file)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
 
-            # Validate the image (now returns opened image)
-            validation = compressor.validate_image(image_data)
-            if not validation.is_valid:
-                return jsonify({
-                    'error': 'Image validation failed',
-                    'details': validation.errors,
-                    'warnings': validation.warnings
-                }), 400
+    # Get compression parameters
+    compression_mode = request.form.get('mode', 'lossless')
+    max_width = request.form.get('max_width', type=int)
+    max_height = request.form.get('max_height', type=int)
+    quality = request.form.get('quality', type=int)
 
-            # Process warnings
-            if validation.warnings:
-                current_app.logger.warning(f"Image processing warnings for {file.filename}: {validation.warnings}")
+    # Use shared processing logic
+    success, response_data, status_code = _process_image_file(
+        file, compression_mode, max_width, max_height, quality
+    )
 
-            # Compress the image using pre-opened image (OPTIMIZATION: avoid reopening)
-            compressed_data, metadata = compressor.compress_image(
-                image_data,
-                compression_mode,
-                max_width,
-                max_height,
-                quality,
-                preloaded_image=validation.image
-            )
+    if success:
+        response_data['filename'] = secure_filename(file.filename)
 
-            # Convert to hex (OPTIMIZATION: removed redundant validation)
-            hex_data = compressed_data.hex()
-                
-            return jsonify({
-                'message': 'File processed successfully',
-                'metadata': {
-                    **metadata,
-                    'encoding': 'hex'
-                },
-                'compressed_data': hex_data,
-                'filename': secure_filename(file.filename),
-                'warnings': validation.warnings
-            }), 200
-        
-        except Exception as e:
-            current_app.logger.error(f"Compression failed: {str(e)}")
-            return jsonify({'error': str(e)}), 500
-        
-    return jsonify({'error': 'Invalid file type'}), 400
+    return jsonify(response_data), status_code
 
 @main.route('/download', methods=['POST'])
 @current_app.auth.login_required
@@ -288,59 +309,25 @@ def download_file():
 @main.route('/resize', methods=['POST'])
 @current_app.auth.login_required
 def resize_image():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-        
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-        
-    if file and file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.tiff')):
-        try:
-            # Read the uploaded file
-            image_data = file.read()
+    # Validate file using centralized validator
+    file = request.files.get('file')
+    is_valid, error_msg = validate_file(file)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
 
-            # Get resize parameters
-            max_width = request.form.get('max_width', type=int)
-            max_height = request.form.get('max_height', type=int)
+    # Get resize parameters
+    max_width = request.form.get('max_width', type=int)
+    max_height = request.form.get('max_height', type=int)
 
-            # Validate the image (now returns opened image)
-            validation = compressor.validate_image(image_data)
-            if not validation.is_valid:
-                return jsonify({
-                    'error': 'Image validation failed',
-                    'details': validation.errors,
-                    'warnings': validation.warnings
-                }), 400
+    # Use shared processing logic (lossless mode for resize-only)
+    success, response_data, status_code = _process_image_file(
+        file, 'lossless', max_width, max_height
+    )
 
-            # Process image using pre-opened image (OPTIMIZATION: avoid reopening)
-            compressed_data, metadata = compressor.compress_image(
-                image_data,
-                'lossless',
-                max_width,
-                max_height,
-                preloaded_image=validation.image
-            )
+    if success:
+        response_data['filename'] = secure_filename(file.filename)
 
-            # Convert to hex (OPTIMIZATION: removed redundant validation)
-            hex_data = compressed_data.hex()
-                
-            return jsonify({
-                'message': 'File processed successfully',
-                'metadata': {
-                    **metadata,
-                    'encoding': 'hex'
-                },
-                'compressed_data': hex_data,
-                'filename': secure_filename(file.filename),
-                'warnings': validation.warnings
-            }), 200
-            
-        except Exception as e:
-            current_app.logger.error(f"Resize failed: {str(e)}")
-            return jsonify({'error': str(e)}), 500
-        
-    return jsonify({'error': 'Invalid file type'}), 400
+    return jsonify(response_data), status_code
 
 @main.route('/theme', methods=['POST'])
 @current_app.auth.login_required
@@ -358,11 +345,3 @@ def toggle_theme():
 
     return jsonify({'theme': theme})
 
-@main.route('/test-session')
-def test_session():
-    session['test'] = 'test value'
-    current_app.logger.debug(f"Session contents: {dict(session)}")
-    return jsonify({
-        'session': dict(session),
-        'authenticated': session.get('authenticated', False)
-    })

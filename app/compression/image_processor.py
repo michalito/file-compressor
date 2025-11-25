@@ -246,13 +246,21 @@ class ImageCompressor:
             compressed_data = self._compress_high(img, quality=30, use_webp=use_webp)
             compression_ratio = round(len(compressed_data) / original_size * 100, 2)
 
+        # Determine actual output format based on mode and use_webp parameter
+        if mode == 'lossless':
+            output_format = original_format
+        elif use_webp:
+            output_format = 'WEBP'
+        else:
+            output_format = 'JPEG'
+
         metadata = {
             'original_size': original_size,
             'compressed_size': len(compressed_data),
             'original_dimensions': original_dimensions,
             'final_dimensions': img.size,
             'compression_ratio': compression_ratio,
-            'format': 'WEBP' if mode in ['web', 'high'] else original_format
+            'format': output_format
         }
 
         return compressed_data, metadata
