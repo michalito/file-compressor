@@ -11,7 +11,7 @@ const defaultState = {
   // Settings (persisted)
   settings: {
     compress: { mode: 'lossless', outputFormat: 'auto' },
-    resize: { mode: 'original', width: null, height: null, maintainAspectRatio: true },
+    resize: { mode: 'original', width: null, height: null },
   },
 
   // Files (runtime only)

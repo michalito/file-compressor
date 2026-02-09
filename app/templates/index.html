@@ -215,18 +215,18 @@
                 <div class="form-row">
                     <div class="form-field">
                         <label for="custom-width" class="form-label">Width (px)</label>
-                        <input type="number" id="custom-width" class="form-input" min="1" max="8000" placeholder="Width">
+                        <input type="number" id="custom-width" class="form-input" min="1" max="10000" placeholder="Width">
                     </div>
                     <div class="form-field">
                         <label for="custom-height" class="form-label">Height (px)</label>
-                        <input type="number" id="custom-height" class="form-input" min="1" max="8000" placeholder="Height">
+                        <input type="number" id="custom-height" class="form-input" min="1" max="10000" placeholder="Height">
                     </div>
                 </div>
 
-                <label class="form-checkbox" style="margin-top: var(--space-3)">
-                    <input type="checkbox" id="maintain-aspect-ratio" class="form-checkbox__input" checked>
-                    <span class="form-checkbox__label">Maintain aspect ratio</span>
-                </label>
+                <p class="form-hint" style="margin-top: var(--space-3)">
+                    <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                    Dimensions are linked — changing one auto-calculates the other. Images are scaled to fit within the specified size while preserving aspect ratio. Smaller images are not upscaled.
+                </p>
 
                 <!-- Size presets -->
                 <div style="margin-top: var(--space-4)">

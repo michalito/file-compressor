@@ -57,7 +57,7 @@ const tools = {
     label: 'Resize',
     modalId: 'resize-modal',
     summaryId: 'resize-summary',
-    defaultSettings: { mode: 'original', width: null, height: null, maintainAspectRatio: true },
+    defaultSettings: { mode: 'original', width: null, height: null },
 
     renderSummary(settings) {
       if (settings.mode === 'original') return 'Original Size';
@@ -78,11 +78,9 @@ const tools = {
 
       const widthInput = $('#custom-width');
       const heightInput = $('#custom-height');
-      const aspectCheckbox = $('#maintain-aspect-ratio');
 
       if (widthInput && settings.width) widthInput.value = settings.width;
       if (heightInput && settings.height) heightInput.value = settings.height;
-      if (aspectCheckbox) aspectCheckbox.checked = settings.maintainAspectRatio;
     },
 
     readFromModal() {
@@ -91,7 +89,6 @@ const tools = {
         mode,
         width: mode === 'custom' ? (parseInt($('#custom-width')?.value, 10) || null) : null,
         height: mode === 'custom' ? (parseInt($('#custom-height')?.value, 10) || null) : null,
-        maintainAspectRatio: $('#maintain-aspect-ratio')?.checked ?? true,
       };
     },
 
@@ -210,14 +207,13 @@ function toggleOutputFormatSection() {
 function initAspectRatio() {
   const widthInput = $('#custom-width');
   const heightInput = $('#custom-height');
-  const aspectCheckbox = $('#maintain-aspect-ratio');
-  if (!widthInput || !heightInput || !aspectCheckbox) return;
+  if (!widthInput || !heightInput) return;
 
   let aspectRatio = null;
   let updating = false;
 
   const update = (changed, other) => {
-    if (!aspectCheckbox.checked || !aspectRatio || updating) return;
+    if (!aspectRatio || updating) return;
     updating = true;
     const val = parseInt(changed.value, 10);
     if (!isNaN(val)) {
@@ -240,11 +236,6 @@ function initAspectRatio() {
       aspectRatio = parseInt(widthInput.value, 10) / parseInt(heightInput.value, 10);
     }
     update(heightInput, widthInput);
-  });
-
-  // Reset aspect ratio when unchecking
-  aspectCheckbox.addEventListener('change', () => {
-    if (!aspectCheckbox.checked) aspectRatio = null;
   });
 }
 

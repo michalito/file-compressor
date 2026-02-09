@@ -1,7 +1,10 @@
-from PIL import Image
+from PIL import Image, ImageOps, ImageCms
 import io
+import logging
 from typing import Tuple, Dict, Optional, List
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 class CompressionError(Exception):
@@ -40,6 +43,64 @@ class ImageCompressor:
             'web': self._compress_web,
             'high': self._compress_high
         }
+
+    def _apply_exif_orientation(self, img: Image.Image) -> Image.Image:
+        """Physically rotate pixels to match EXIF orientation tag."""
+        original_format = img.format
+        try:
+            transposed = ImageOps.exif_transpose(img)
+            if transposed is not None:
+                transposed.format = original_format
+                return transposed
+        except Exception:
+            logger.debug("Could not apply EXIF orientation, using image as-is")
+        return img
+
+    def _normalize_color_mode(self, img: Image.Image) -> Image.Image:
+        """Convert non-standard color modes to RGB/RGBA."""
+        original_format = img.format
+        original_mode = img.mode
+
+        if img.mode in ('RGB', 'RGBA', 'LA', 'L'):
+            return img
+
+        if img.mode == 'CMYK':
+            img = img.convert('RGB')
+        elif img.mode in ('P', 'PA'):
+            if 'transparency' in img.info or img.mode == 'PA':
+                img = img.convert('RGBA')
+            else:
+                img = img.convert('RGB')
+        elif img.mode == 'I':
+            img = img.convert('L').convert('RGB')
+        elif img.mode == '1':
+            img = img.convert('L').convert('RGB')
+        else:
+            img = img.convert('RGB')
+
+        img.format = original_format
+        logger.info("Converted color mode %s → %s", original_mode, img.mode)
+        return img
+
+    def _convert_to_srgb(self, img: Image.Image) -> Image.Image:
+        """Convert non-sRGB ICC profiles to sRGB for correct web display."""
+        icc_profile = img.info.get('icc_profile')
+        if not icc_profile or img.mode not in ('RGB', 'RGBA'):
+            return img
+
+        original_format = img.format
+        try:
+            input_profile = ImageCms.ImageCmsProfile(io.BytesIO(icc_profile))
+            srgb_profile = ImageCms.createProfile('sRGB')
+            img = ImageCms.profileToProfile(
+                img, input_profile, srgb_profile,
+                outputMode=img.mode
+            )
+            img.format = original_format
+        except Exception:
+            logger.debug("Could not convert ICC profile to sRGB, using image as-is")
+
+        return img
 
     def validate_image(self, image_data: bytes) -> ValidationResult:
         """
@@ -123,8 +184,20 @@ class ImageCompressor:
         elif save_format in ['JPEG', 'JPG']:
             save_params['quality'] = quality if quality is not None else 95
             save_params['progressive'] = True
+            save_params['subsampling'] = 'keep'
+            if img.info.get('exif'):
+                save_params['exif'] = img.info['exif']
+            icc_profile = img.info.get('icc_profile')
+            if icc_profile:
+                save_params['icc_profile'] = icc_profile
         elif save_format == 'WEBP':
-            save_params['quality'] = quality if quality is not None else 95
+            save_params['lossless'] = True
+            save_params['quality'] = 80  # compression effort for lossless
+        elif save_format == 'TIFF':
+            save_params['compression'] = 'tiff_adobe_deflate'
+            icc_profile = img.info.get('icc_profile')
+            if icc_profile:
+                save_params['icc_profile'] = icc_profile
 
         img.save(output, **save_params)
         return output.getvalue()
@@ -149,9 +222,6 @@ class ImageCompressor:
             if processed_img.mode != 'RGB':
                 processed_img = processed_img.convert('RGB')
 
-        # Strip EXIF metadata for privacy
-        processed_img.info.pop('exif', None)
-
         if use_webp:
             processed_img.save(
                 output,
@@ -159,7 +229,9 @@ class ImageCompressor:
                 quality=quality if quality is not None else 75,
                 method=4,
                 lossless=False,
-                exact=False
+                exact=False,
+                exif=b'',
+                icc_profile=b''
             )
         else:
             processed_img.save(
@@ -167,7 +239,10 @@ class ImageCompressor:
                 format='JPEG',
                 quality=quality if quality is not None else 85,
                 optimize=True,
-                progressive=True
+                progressive=True,
+                subsampling='4:2:0',
+                exif=b'',
+                icc_profile=b''
             )
 
         return output.getvalue()
@@ -192,9 +267,6 @@ class ImageCompressor:
             if processed_img.mode != 'RGB':
                 processed_img = processed_img.convert('RGB')
 
-        # Strip EXIF metadata for privacy
-        processed_img.info.pop('exif', None)
-
         if use_webp:
             processed_img.save(
                 output,
@@ -203,7 +275,9 @@ class ImageCompressor:
                 method=6,
                 lossless=False,
                 exact=False,
-                minimize_size=True
+                minimize_size=True,
+                exif=b'',
+                icc_profile=b''
             )
         else:
             processed_img.save(
@@ -211,7 +285,10 @@ class ImageCompressor:
                 format='JPEG',
                 quality=quality if quality is not None else 60,
                 optimize=True,
-                progressive=True
+                progressive=True,
+                subsampling='4:2:0',
+                exif=b'',
+                icc_profile=b''
             )
 
         return output.getvalue()
@@ -238,6 +315,16 @@ class ImageCompressor:
             img = preloaded_image
         else:
             img = Image.open(io.BytesIO(image_data))
+
+        # Apply EXIF orientation correction before anything else
+        img = self._apply_exif_orientation(img)
+
+        # Normalize non-standard color modes (CMYK, P, PA, I, 1)
+        img = self._normalize_color_mode(img)
+
+        # Convert to sRGB for web/high modes (lossless preserves original profile)
+        if mode in ('web', 'high'):
+            img = self._convert_to_srgb(img)
 
         original_format = img.format
         original_size = len(image_data)
@@ -278,8 +365,17 @@ class ImageCompressor:
         # try more aggressive settings (don't increase quality above what was asked)
         if mode == 'high' and compression_ratio > 50:
             retry_quality = min(quality, 30) if quality is not None else 30
-            compressed_data = self._compress_high(img, quality=retry_quality, use_webp=use_webp)
-            compression_ratio = round(len(compressed_data) / original_size * 100, 2)
+            retry_data = self._compress_high(img, quality=retry_quality, use_webp=use_webp)
+            retry_ratio = round(len(retry_data) / original_size * 100, 2)
+            if retry_ratio < compression_ratio:
+                compressed_data = retry_data
+                compression_ratio = retry_ratio
+                format_warnings.append(
+                    "Applied aggressive compression retry to achieve target size reduction"
+                )
+            else:
+                logger.info("High compression retry did not improve ratio (%.1f%% → %.1f%%)",
+                            compression_ratio, retry_ratio)
 
         # Determine actual output format based on mode and settings
         if mode == 'lossless':
@@ -314,13 +410,13 @@ class ImageCompressor:
         if max_width and max_height:
             if width > max_width or height > max_height:
                 if max_width / max_height > aspect_ratio:
-                    max_width = int(max_height * aspect_ratio)
+                    max_width = max(1, round(max_height * aspect_ratio))
                 else:
-                    max_height = int(max_width / aspect_ratio)
+                    max_height = max(1, round(max_width / aspect_ratio))
         elif max_width:
-            max_height = int(max_width / aspect_ratio)
+            max_height = max(1, round(max_width / aspect_ratio))
         else:  # max_height only
-            max_width = int(max_height * aspect_ratio)
+            max_width = max(1, round(max_height * aspect_ratio))
 
         if max_width < width or max_height < height:
             img = img.resize((max_width, max_height), Image.Resampling.LANCZOS)

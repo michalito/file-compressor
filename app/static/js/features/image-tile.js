@@ -126,7 +126,10 @@ async function processImage(fileId, tile, skipGlobalProgress = false) {
     const badges = tile.querySelector('.tile__status-badges');
     badges.innerHTML = '';
     badges.appendChild(createBadge('Compressed', 'success'));
-    if (state.settings.resize.mode === 'custom') {
+    const origDims = result.metadata.original_dimensions;
+    const finalDims = result.metadata.final_dimensions;
+    if (origDims && finalDims &&
+        (origDims[0] !== finalDims[0] || origDims[1] !== finalDims[1])) {
       badges.appendChild(createBadge('Resized', 'info'));
     }
 
