@@ -3,21 +3,26 @@ import io
 from typing import Tuple, Dict, Optional, List
 from dataclasses import dataclass
 
+
 class CompressionError(Exception):
     """Base class for compression-related errors"""
     pass
+
 
 class FileSizeError(CompressionError):
     """Raised when file size exceeds maximum limit"""
     pass
 
+
 class FormatError(CompressionError):
     """Raised when image format is not supported"""
     pass
 
+
 class ImageValidationError(CompressionError):
     """Raised when image validation fails"""
     pass
+
 
 @dataclass
 class ValidationResult:
@@ -25,6 +30,7 @@ class ValidationResult:
     errors: List[str]
     warnings: List[str]
     image: Optional[Image.Image] = None  # Return the opened image to avoid reopening
+
 
 class ImageCompressor:
     def __init__(self, max_file_size_mb: int = 10):
@@ -76,6 +82,29 @@ class ImageCompressor:
             image=img if len(errors) == 0 else None
         )
 
+    def _remove_transparency(self, img: Image.Image) -> Image.Image:
+        """Convert RGBA/LA image to RGB with white background"""
+        if img.mode in ('RGBA', 'LA'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[3])
+            else:
+                background.paste(img, mask=img.split()[1])
+            return background
+        return img
+
+    def _has_transparency(self, img: Image.Image) -> bool:
+        """Check if image has actual transparent pixels (not just an alpha channel)."""
+        if img.mode == 'RGBA':
+            alpha = img.split()[3]
+            extrema = alpha.getextrema()
+            return extrema[0] < 255  # Has at least one non-fully-opaque pixel
+        if img.mode == 'LA':
+            alpha = img.split()[1]
+            extrema = alpha.getextrema()
+            return extrema[0] < 255
+        return False
+
     def _compress_lossless(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = False) -> bytes:
         """
         Lossless compression - maintains original quality while reducing file size.
@@ -87,22 +116,15 @@ class ImageCompressor:
         save_params = {
             'format': save_format,
             'optimize': True,
-            'quality': quality if quality is not None else 95
         }
 
-        # Add specific parameters for PNG
         if save_format == 'PNG':
-            save_params.update({
-                'optimize': True,
-                'compress_level': 9
-            })
-        # Add specific parameters for JPEG
+            save_params['compress_level'] = 9
         elif save_format in ['JPEG', 'JPG']:
-            save_params.update({
-                'optimize': True,
-                'quality': quality if quality is not None else 95,
-                'progressive': True
-            })
+            save_params['quality'] = quality if quality is not None else 95
+            save_params['progressive'] = True
+        elif save_format == 'WEBP':
+            save_params['quality'] = quality if quality is not None else 95
 
         img.save(output, **save_params)
         return output.getvalue()
@@ -110,40 +132,36 @@ class ImageCompressor:
     def _compress_web(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = True) -> bytes:
         """
         Web optimization - balanced compression for web use.
-        OPTIMIZATION: Only convert color mode if necessary.
         """
         output = io.BytesIO()
 
-        # OPTIMIZATION: Only convert if needed
         if use_webp:
-            # WebP supports RGBA, so only convert if needed
+            # WebP supports RGBA, keep transparency
             if img.mode in ('RGBA', 'LA'):
                 processed_img = img if img.mode == 'RGBA' else img.convert('RGBA')
             elif img.mode == 'RGB':
-                processed_img = img  # Already in correct mode
+                processed_img = img
             else:
                 processed_img = img.convert('RGB')
         else:
-            # JPEG doesn't support transparency, so convert RGBA to RGB
-            if img.mode in ('RGBA', 'LA'):
-                processed_img = img.convert('RGB')
-            elif img.mode == 'RGB':
-                processed_img = img  # Already in correct mode
-            else:
-                processed_img = img.convert('RGB')
+            # JPEG doesn't support transparency — composite onto white
+            processed_img = self._remove_transparency(img)
+            if processed_img.mode != 'RGB':
+                processed_img = processed_img.convert('RGB')
+
+        # Strip EXIF metadata for privacy
+        processed_img.info.pop('exif', None)
 
         if use_webp:
-            # Save as WebP with web-optimized settings
             processed_img.save(
                 output,
                 format='WEBP',
                 quality=quality if quality is not None else 75,
-                method=4,  # 0-6, higher means better compression but slower
+                method=4,
                 lossless=False,
                 exact=False
             )
         else:
-            # Save as JPEG with optimized settings
             processed_img.save(
                 output,
                 format='JPEG',
@@ -157,37 +175,37 @@ class ImageCompressor:
     def _compress_high(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = False) -> bytes:
         """
         High compression - maximum size reduction.
-        OPTIMIZATION: Only convert color mode if necessary, respect use_webp parameter.
         """
         output = io.BytesIO()
 
-        # OPTIMIZATION: Only convert if needed
-        if img.mode in ('RGBA', 'LA'):
-            # Remove transparency with white background (required for JPEG)
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[3])
+        if use_webp:
+            # WebP supports RGBA, keep transparency
+            if img.mode in ('RGBA', 'LA'):
+                processed_img = img if img.mode == 'RGBA' else img.convert('RGBA')
+            elif img.mode == 'RGB':
+                processed_img = img
             else:
-                background.paste(img, mask=img.split()[1])
-            processed_img = background
-        elif img.mode == 'RGB':
-            processed_img = img  # Already in correct mode
+                processed_img = img.convert('RGB')
         else:
-            processed_img = img.convert('RGB')
+            # JPEG doesn't support transparency — composite onto white
+            processed_img = self._remove_transparency(img)
+            if processed_img.mode != 'RGB':
+                processed_img = processed_img.convert('RGB')
 
-        # Save in requested format (WebP or JPEG)
+        # Strip EXIF metadata for privacy
+        processed_img.info.pop('exif', None)
+
         if use_webp:
             processed_img.save(
                 output,
                 format='WEBP',
                 quality=quality if quality is not None else 40,
-                method=6,  # Maximum compression effort
+                method=6,
                 lossless=False,
                 exact=False,
                 minimize_size=True
             )
         else:
-            # High compression JPEG
             processed_img.save(
                 output,
                 format='JPEG',
@@ -205,20 +223,15 @@ class ImageCompressor:
         max_width: Optional[int] = None,
         max_height: Optional[int] = None,
         quality: Optional[int] = None,
-        use_webp: bool = False,
+        output_format: str = 'auto',
         preloaded_image: Optional[Image.Image] = None
     ) -> Tuple[bytes, Dict]:
         """
         Compress an image using the specified mode and parameters.
 
-        Args:
-            image_data: Original image bytes (for size calculation)
-            mode: Compression mode ('lossless', 'web', 'high')
-            max_width: Maximum width for resizing
-            max_height: Maximum height for resizing
-            quality: Quality setting
-            use_webp: Whether to use WebP format
-            preloaded_image: Pre-opened PIL Image (avoids reopening)
+        output_format: 'auto', 'webp', or 'jpeg'. In auto mode, transparent
+        images are output as WebP to preserve transparency; opaque images
+        become JPEG.  Ignored in lossless mode.
         """
         # Use preloaded image if available, otherwise open it
         if preloaded_image is not None:
@@ -229,6 +242,27 @@ class ImageCompressor:
         original_format = img.format
         original_size = len(image_data)
         original_dimensions = img.size
+
+        # Resolve output_format to use_webp bool (lossless ignores this)
+        format_warnings: List[str] = []
+        has_transparency = self._has_transparency(img)
+
+        if mode == 'lossless':
+            use_webp = False  # Ignored — lossless preserves original format
+        elif output_format == 'webp':
+            use_webp = True
+        elif output_format == 'jpeg':
+            use_webp = False
+            if has_transparency:
+                format_warnings.append(
+                    "JPEG does not support transparency — transparent areas will become white"
+                )
+        else:  # 'auto'
+            use_webp = has_transparency
+            if has_transparency:
+                format_warnings.append(
+                    "Transparent image detected — using WebP to preserve transparency"
+                )
 
         # Resize if dimensions are provided
         if max_width or max_height:
@@ -241,10 +275,19 @@ class ImageCompressor:
         compression_ratio = round(len(compressed_data) / original_size * 100, 2)
 
         # If high compression didn't achieve better than 50% reduction,
-        # try more aggressive settings (OPTIMIZATION: Only if ratio is poor)
+        # try more aggressive settings (don't increase quality above what was asked)
         if mode == 'high' and compression_ratio > 50:
-            compressed_data = self._compress_high(img, quality=30, use_webp=use_webp)
+            retry_quality = min(quality, 30) if quality is not None else 30
+            compressed_data = self._compress_high(img, quality=retry_quality, use_webp=use_webp)
             compression_ratio = round(len(compressed_data) / original_size * 100, 2)
+
+        # Determine actual output format based on mode and settings
+        if mode == 'lossless':
+            resolved_format = original_format or 'PNG'
+        elif use_webp:
+            resolved_format = 'WEBP'
+        else:
+            resolved_format = 'JPEG'
 
         metadata = {
             'original_size': original_size,
@@ -252,7 +295,8 @@ class ImageCompressor:
             'original_dimensions': original_dimensions,
             'final_dimensions': img.size,
             'compression_ratio': compression_ratio,
-            'format': 'WEBP' if mode in ['web', 'high'] else original_format
+            'format': resolved_format,
+            'format_warnings': format_warnings
         }
 
         return compressed_data, metadata
@@ -263,6 +307,8 @@ class ImageCompressor:
             return img
 
         width, height = img.size
+        if height == 0:
+            return img
         aspect_ratio = width / height
 
         if max_width and max_height:
@@ -279,15 +325,4 @@ class ImageCompressor:
         if max_width < width or max_height < height:
             img = img.resize((max_width, max_height), Image.Resampling.LANCZOS)
 
-        return img
-
-    def _remove_transparency(self, img: Image.Image) -> Image.Image:
-        """Convert RGBA image to RGB with white background"""
-        if img.mode in ('RGBA', 'LA'):
-            background = Image.new('RGB', img.size, 'white')
-            if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[3])
-            else:
-                background.paste(img, mask=img.split()[1])
-            return background
         return img

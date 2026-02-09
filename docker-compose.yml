@@ -1,23 +1,28 @@
 services:
   web:
     build: .
+    command: python run.py
     ports:
-      - "0.0.0.0:8000:8000"  # Explicitly bind to all interfaces
+      - "5001:5000"
+    env_file:
+      - .env
     environment:
-      - SECRET_KEY=${SECRET_KEY}
-      - APP_PASSWORD=${APP_PASSWORD}
-      - FLASK_ENV=development  # Set to development for testing
-      - FLASK_DEBUG=1  # Add this for debugging
-      - PROXY_FIX=false  # Disable proxy fix for local testing
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - PROXY_FIX=false
     volumes:
-      - app_secrets:/app/instance/secrets
-      - ./app:/app/app  # Add this for development
+      - ./app:/app/app
+      - ./run.py:/app/run.py
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/login')"]
+      # Note: healthcheck runs inside the container, so it uses the internal port 5000
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     logging:
       driver: "json-file"
       options:
         max-size: "200k"
         max-file: "10"
-
-volumes:
-  app_secrets:

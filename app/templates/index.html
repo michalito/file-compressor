@@ -1,275 +1,247 @@
 {% extends "base.html" %}
 
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/upload.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/tool-card.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/image-tile.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/action-bar.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="app-layout">
-    <!-- Sidebar Controls -->
-    <div class="sidebar-container">
-        <div class="sidebar">
-            <!-- Upload Area -->
-            <div class="mdc-card upload-area">
-                <div class="mdc-card__primary-action" tabindex="0">
-                    <div class="card-content">
-                        <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff" class="file-input">
-                        <div class="upload-message">
-                            <i class="material-icons">cloud_upload</i>
-                            <p>Drag and drop images here or click to select files</p>
-                            <p class="supported-formats">Supported formats: JPG, PNG, WebP, TIFF</p>
-                        </div>
-                    </div>
-                </div>
+    <!-- Tool Panel (Left Sidebar) -->
+    <aside class="tool-panel" id="tool-panel">
+        <!-- Upload Zone -->
+        <div class="drop-zone" tabindex="0" role="button" aria-label="Upload images">
+            <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff,.tif" class="drop-zone__input">
+            <svg class="drop-zone__icon" aria-hidden="true"><use href="#icon-upload"/></svg>
+            <p class="drop-zone__text">Drop images here or click to browse</p>
+            <p class="drop-zone__hint">JPG, PNG, WebP, TIFF</p>
+        </div>
+
+        <!-- Settings Tools -->
+        <span class="tool-panel__section-title">Settings</span>
+
+        <!-- Compression Tool Card -->
+        <div class="tool-card" id="compress-tool-card" role="button" tabindex="0" aria-label="Compression settings">
+            <div class="tool-card__icon">
+                <svg aria-hidden="true"><use href="#icon-zap"/></svg>
             </div>
-
-            <!-- Settings Panels -->
-            <div class="settings-panels">
-                <!-- Compression Settings Summary -->
-                <div class="mdc-card settings-summary compression-summary">
-                    <h2 class="mdc-typography--headline6">Compression Settings</h2>
-                    <div class="current-settings">
-                        <p class="setting-value">Mode: <span id="compression-mode-display">Lossless</span></p>
-                    </div>
-                    <button class="mdc-button mdc-button--outlined" id="open-compression-settings">
-                        <span class="mdc-button__ripple"></span>
-                        <i class="material-icons mdc-button__icon">settings</i>
-                        <span class="mdc-button__label">Configure</span>
-                    </button>
-                </div>
-
-                <!-- Resize Settings Summary -->
-                <div class="mdc-card settings-summary resize-summary">
-                    <h2 class="mdc-typography--headline6">Resize Settings</h2>
-                    <div class="current-settings">
-                        <p class="setting-value">Size: <span id="resize-mode-display">Original Size</span></p>
-                        <p class="setting-value custom-size-display hidden">Dimensions: <span id="resize-dimensions-display"></span></p>
-                    </div>
-                    <button class="mdc-button mdc-button--outlined" id="open-resize-settings">
-                        <span class="mdc-button__ripple"></span>
-                        <i class="material-icons mdc-button__icon">settings</i>
-                        <span class="mdc-button__label">Configure</span>
-                    </button>
-                </div>
+            <div class="tool-card__body">
+                <div class="tool-card__title">Compression</div>
+                <div class="tool-card__summary" id="compress-summary">Lossless</div>
+            </div>
+            <div class="tool-card__arrow">
+                <svg aria-hidden="true"><use href="#icon-settings"/></svg>
             </div>
         </div>
-    </div>
 
-    <!-- Main Content Area -->
-    <div class="main-content">
-        <!-- Preview Area with Batch Controls and Image Tiles -->
-        <div id="preview-area" class="preview-area hidden">
-            <!-- Batch Controls Bar -->
-            <div class="batch-controls mdc-card">
-                <div class="batch-status">
-                    <div class="batch-selection">
-                        <div class="mdc-form-field">
-                            <div class="mdc-checkbox">
-                                <input type="checkbox" id="select-all" class="mdc-checkbox__native-control"/>
-                                <div class="mdc-checkbox__background">
-                                    <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
-                                        <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
-                                    </svg>
-                                </div>
-                            </div>
-                            <label for="select-all">Select All Images</label>
-                        </div>
-                        <div class="status-indicators">
-                            <span class="total-files mdc-typography--body2">
-                                <i class="material-icons">photo_library</i>
-                                <span id="total-files-count">0</span> files loaded
-                            </span>
-                            <span class="selected-files mdc-typography--body2">
-                                <i class="material-icons">check_circle</i>
-                                <span id="selected-files-count">0</span> selected
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="batch-actions">
-                    <button class="mdc-button mdc-button--raised action-button" id="process-selected" disabled>
-                        <span class="mdc-button__ripple"></span>
-                        <i class="material-icons mdc-button__icon">auto_fix_high</i>
-                        <span class="mdc-button__label">Process Selected</span>
-                    </button>
+        <!-- Resize Tool Card -->
+        <div class="tool-card" id="resize-tool-card" role="button" tabindex="0" aria-label="Resize settings">
+            <div class="tool-card__icon">
+                <svg aria-hidden="true"><use href="#icon-maximize"/></svg>
+            </div>
+            <div class="tool-card__body">
+                <div class="tool-card__title">Resize</div>
+                <div class="tool-card__summary" id="resize-summary">Original Size</div>
+            </div>
+            <div class="tool-card__arrow">
+                <svg aria-hidden="true"><use href="#icon-settings"/></svg>
+            </div>
+        </div>
+    </aside>
 
-                    <button class="mdc-button mdc-button--outlined action-button" id="download-selected" disabled>
-                        <span class="mdc-button__ripple"></span>
-                        <i class="material-icons mdc-button__icon">download</i>
-                        <span class="mdc-button__label">Download Selected</span>
-                    </button>
-                </div>
-
-                <!-- Batch Progress Section -->
-                <div class="batch-progress hidden">
-                    <div class="progress-status">
-                        <span class="status-text mdc-typography--body2">
-                            Processing files: <span id="processed-count">0</span>/<span id="total-count">0</span>
-                        </span>
-                        <span class="time-remaining mdc-typography--caption" id="time-remaining"></span>
-                    </div>
-                    <div class="mdc-linear-progress" id="batch-progress-bar">
-                        <div class="mdc-linear-progress__buffer">
-                            <div class="mdc-linear-progress__buffer-bar"></div>
-                            <div class="mdc-linear-progress__buffer-dots"></div>
-                        </div>
-                        <div class="mdc-linear-progress__bar mdc-linear-progress__primary-bar">
-                            <span class="mdc-linear-progress__bar-inner"></span>
-                        </div>
-                    </div>
-                    <button class="mdc-button mdc-button--outlined" id="cancel-batch">
-                        <span class="mdc-button__ripple"></span>
-                        <span class="mdc-button__label">Cancel</span>
-                    </button>
+    <!-- Workspace (Right Main Area) -->
+    <div class="workspace">
+        <!-- Action Bar (hidden until files added) -->
+        <div class="action-bar is-hidden" id="action-bar">
+            <div class="action-bar__left">
+                <label class="form-checkbox">
+                    <input type="checkbox" id="select-all" class="form-checkbox__input">
+                    <span class="form-checkbox__label">Select All</span>
+                </label>
+                <div class="action-bar__stats">
+                    <span class="action-bar__stat">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-image"/></svg>
+                        <span id="total-files-count">0</span> files
+                    </span>
+                    <span class="action-bar__stat">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-check"/></svg>
+                        <span id="selected-files-count">0</span> selected
+                    </span>
                 </div>
             </div>
-
-            <!-- Grid Container for Image Tiles -->
-            <div class="preview-grid">
-                {% include 'image_tile_template.html' %}
+            <div class="action-bar__right">
+                <button class="btn btn--primary btn--sm" id="process-selected" disabled>
+                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-zap"/></svg>
+                    <span>Process</span>
+                </button>
+                <button class="btn btn--secondary btn--sm" id="download-selected" disabled>
+                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-download"/></svg>
+                    <span>Download</span>
+                </button>
             </div>
+        </div>
+
+        <!-- Batch Progress (hidden by default) -->
+        <div class="batch-progress is-hidden" id="batch-progress">
+            <div class="batch-progress__header">
+                <span class="batch-progress__status">
+                    Processing: <span id="processed-count">0</span>/<span id="total-count">0</span>
+                </span>
+                <span class="batch-progress__time" id="time-remaining"></span>
+            </div>
+            <div class="progress-inline">
+                <div class="progress-inline__bar" id="batch-progress-bar"></div>
+            </div>
+            <button class="btn btn--ghost btn--sm" id="cancel-batch">Cancel</button>
+        </div>
+
+        <!-- Empty State -->
+        <div class="workspace__empty" id="workspace-empty">
+            <svg class="workspace__empty-icon" aria-hidden="true"><use href="#icon-image"/></svg>
+            <p class="workspace__empty-text">No images yet</p>
+            <p class="workspace__empty-hint">Upload images using the panel on the left, or drag and drop them anywhere</p>
+        </div>
+
+        <!-- Image Grid -->
+        <div class="image-grid is-hidden" id="image-grid">
+            {% include 'image_tile_template.html' %}
         </div>
     </div>
 </div>
 
-<!-- Modals -->
-<div class="modal-overlay hidden" id="compression-modal">
-    <div class="mdc-card modal-content">
-        <h2 class="mdc-typography--headline6">Compression Settings</h2>
-        <div class="modal-body">
-            <div class="mdc-form-field">
-                <div class="mdc-radio">
-                    <input class="mdc-radio__native-control" type="radio" id="lossless" name="compression-type" value="lossless" checked>
-                    <div class="mdc-radio__background">
-                        <div class="mdc-radio__outer-circle"></div>
-                        <div class="mdc-radio__inner-circle"></div>
+<!-- Mobile Tool Panel Toggle -->
+<button class="tool-panel__toggle" id="tool-panel-toggle" aria-label="Toggle settings panel">
+    <svg aria-hidden="true"><use href="#icon-sliders"/></svg>
+</button>
+
+<!-- ─── Compression Settings Modal ─── -->
+<div class="modal" id="compression-modal" role="dialog" aria-modal="true" aria-labelledby="compression-modal-title">
+    <div class="modal__content">
+        <div class="modal__header">
+            <h2 class="modal__title" id="compression-modal-title">Compression Settings</h2>
+            <button class="modal__close" id="close-compress-modal" aria-label="Close">
+                <svg width="20" height="20" aria-hidden="true"><use href="#icon-x"/></svg>
+            </button>
+        </div>
+        <div class="modal__body">
+            <div class="form-radio-group">
+                <label class="form-radio">
+                    <input type="radio" name="compression-type" value="lossless" class="form-radio__input" checked>
+                    <div class="form-radio__content">
+                        <span class="form-radio__label">Lossless</span>
+                        <span class="form-radio__description">Highest quality, preserves original format</span>
                     </div>
-                </div>
-                <label for="lossless">Lossless (Highest Quality)</label>
+                </label>
+                <label class="form-radio">
+                    <input type="radio" name="compression-type" value="web" class="form-radio__input">
+                    <div class="form-radio__content">
+                        <span class="form-radio__label">Web Optimized</span>
+                        <span class="form-radio__description">Balanced quality and size, targets ~200KB</span>
+                    </div>
+                </label>
+                <label class="form-radio">
+                    <input type="radio" name="compression-type" value="high" class="form-radio__input">
+                    <div class="form-radio__content">
+                        <span class="form-radio__label">Maximum Compression</span>
+                        <span class="form-radio__description">Smallest file size, targets &lt;100KB</span>
+                    </div>
+                </label>
             </div>
 
-            <div class="mdc-form-field">
-                <div class="mdc-radio">
-                    <input class="mdc-radio__native-control" type="radio" id="web" name="compression-type" value="web">
-                    <div class="mdc-radio__background">
-                        <div class="mdc-radio__outer-circle"></div>
-                        <div class="mdc-radio__inner-circle"></div>
-                    </div>
+            <!-- Output Format Section (shown for web/high) -->
+            <div id="output-format-section" class="is-hidden" style="margin-top: var(--space-6)">
+                <div class="form-radio-group">
+                    <span class="form-radio-group__label">Output Format</span>
+                    <label class="form-radio">
+                        <input type="radio" name="output-format" value="auto" class="form-radio__input" checked>
+                        <div class="form-radio__content">
+                            <span class="form-radio__label">Auto (Recommended)</span>
+                            <span class="form-radio__description">Detects transparency and picks the best format</span>
+                        </div>
+                    </label>
+                    <label class="form-radio">
+                        <input type="radio" name="output-format" value="webp" class="form-radio__input">
+                        <div class="form-radio__content">
+                            <span class="form-radio__label">WebP</span>
+                            <span class="form-radio__description">Good compression, supports transparency</span>
+                        </div>
+                    </label>
+                    <label class="form-radio">
+                        <input type="radio" name="output-format" value="jpeg" class="form-radio__input">
+                        <div class="form-radio__content">
+                            <span class="form-radio__label">JPEG</span>
+                            <span class="form-radio__description">Maximum compatibility, no transparency</span>
+                        </div>
+                    </label>
                 </div>
-                <label for="web">Web Optimized (Balanced)</label>
-            </div>
-
-            <div class="mdc-form-field">
-                <div class="mdc-radio">
-                    <input class="mdc-radio__native-control" type="radio" id="high" name="compression-type" value="high">
-                    <div class="mdc-radio__background">
-                        <div class="mdc-radio__outer-circle"></div>
-                        <div class="mdc-radio__inner-circle"></div>
-                    </div>
-                </div>
-                <label for="high">Maximum Compression</label>
             </div>
         </div>
-        <div class="modal-actions">
-            <button class="mdc-button" id="close-compression-modal">
-                <span class="mdc-button__ripple"></span>
-                <span class="mdc-button__label">Cancel</span>
-            </button>
-            <button class="mdc-button mdc-button--raised" id="save-compression-settings">
-                <span class="mdc-button__ripple"></span>
-                <span class="mdc-button__label">Save Settings</span>
-            </button>
+        <div class="modal__footer">
+            <button class="btn btn--ghost" id="cancel-compress-settings">Cancel</button>
+            <button class="btn btn--primary" id="save-compress-settings">Save</button>
         </div>
     </div>
 </div>
 
-<div class="modal-overlay hidden" id="resize-modal">
-    <div class="mdc-card modal-content">
-        <h2 class="mdc-typography--headline6">Resize Settings</h2>
-        <div class="modal-body">
-            <div class="mdc-form-field">
-                <div class="mdc-radio">
-                    <input class="mdc-radio__native-control" type="radio" id="original-size" name="resize-type" value="original" checked>
-                    <div class="mdc-radio__background">
-                        <div class="mdc-radio__outer-circle"></div>
-                        <div class="mdc-radio__inner-circle"></div>
+<!-- ─── Resize Settings Modal ─── -->
+<div class="modal" id="resize-modal" role="dialog" aria-modal="true" aria-labelledby="resize-modal-title">
+    <div class="modal__content">
+        <div class="modal__header">
+            <h2 class="modal__title" id="resize-modal-title">Resize Settings</h2>
+            <button class="modal__close" id="close-resize-modal" aria-label="Close">
+                <svg width="20" height="20" aria-hidden="true"><use href="#icon-x"/></svg>
+            </button>
+        </div>
+        <div class="modal__body">
+            <div class="form-radio-group">
+                <label class="form-radio">
+                    <input type="radio" name="resize-type" value="original" class="form-radio__input" checked>
+                    <div class="form-radio__content">
+                        <span class="form-radio__label">Keep Original Size</span>
                     </div>
-                </div>
-                <label for="original-size">Keep Original Size</label>
+                </label>
+                <label class="form-radio">
+                    <input type="radio" name="resize-type" value="custom" id="custom-size" class="form-radio__input">
+                    <div class="form-radio__content">
+                        <span class="form-radio__label">Custom Size</span>
+                    </div>
+                </label>
             </div>
 
-            <div class="mdc-form-field">
-                <div class="mdc-radio">
-                    <input class="mdc-radio__native-control" type="radio" id="custom-size" name="resize-type" value="custom">
-                    <div class="mdc-radio__background">
-                        <div class="mdc-radio__outer-circle"></div>
-                        <div class="mdc-radio__inner-circle"></div>
+            <!-- Custom size controls -->
+            <div class="custom-size-controls is-hidden" style="margin-top: var(--space-4)">
+                <div class="form-row">
+                    <div class="form-field">
+                        <label for="custom-width" class="form-label">Width (px)</label>
+                        <input type="number" id="custom-width" class="form-input" min="1" max="8000" placeholder="Width">
+                    </div>
+                    <div class="form-field">
+                        <label for="custom-height" class="form-label">Height (px)</label>
+                        <input type="number" id="custom-height" class="form-input" min="1" max="8000" placeholder="Height">
                     </div>
                 </div>
-                <label for="custom-size">Custom Size</label>
-            </div>
 
-            <div class="custom-size-controls hidden">
-                <div class="dimension-input">
-                    <label class="mdc-text-field mdc-text-field--outlined">
-                        <span class="mdc-notched-outline">
-                            <span class="mdc-notched-outline__leading"></span>
-                            <span class="mdc-notched-outline__notch">
-                                <span class="mdc-floating-label">Width (px)</span>
-                            </span>
-                            <span class="mdc-notched-outline__trailing"></span>
-                        </span>
-                        <input type="number" id="custom-width" class="mdc-text-field__input" min="1" max="8000">
-                    </label>
-                </div>
-                <div class="dimension-input">
-                    <label class="mdc-text-field mdc-text-field--outlined">
-                        <span class="mdc-notched-outline">
-                            <span class="mdc-notched-outline__leading"></span>
-                            <span class="mdc-notched-outline__notch">
-                                <span class="mdc-floating-label">Height (px)</span>
-                            </span>
-                            <span class="mdc-notched-outline__trailing"></span>
-                        </span>
-                        <input type="number" id="custom-height" class="mdc-text-field__input" min="1" max="8000">
-                    </label>
-                </div>
+                <label class="form-checkbox" style="margin-top: var(--space-3)">
+                    <input type="checkbox" id="maintain-aspect-ratio" class="form-checkbox__input" checked>
+                    <span class="form-checkbox__label">Maintain aspect ratio</span>
+                </label>
 
-                <div class="mdc-form-field">
-                    <div class="mdc-checkbox">
-                        <input type="checkbox" class="mdc-checkbox__native-control" id="maintain-aspect-ratio" checked/>
-                        <div class="mdc-checkbox__background">
-                            <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
-                                <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <label for="maintain-aspect-ratio">Maintain aspect ratio</label>
-                </div>
-
-                <!-- Size Presets -->
-                <div class="size-presets">
-                    <span class="mdc-typography--subtitle2">Common Sizes:</span>
-                    <div class="preset-buttons">
-                        <button class="mdc-button" data-width="1920" data-height="1080">
-                            <span class="mdc-button__label">1920×1080</span>
-                        </button>
-                        <button class="mdc-button" data-width="1280" data-height="720">
-                            <span class="mdc-button__label">1280×720</span>
-                        </button>
-                        <button class="mdc-button" data-width="800" data-height="600">
-                            <span class="mdc-button__label">800×600</span>
-                        </button>
+                <!-- Size presets -->
+                <div style="margin-top: var(--space-4)">
+                    <span class="text-xs font-semibold text-secondary" style="margin-bottom: var(--space-2); display: block;">Common Sizes</span>
+                    <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                        <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1920" data-height="1080">1920 x 1080</button>
+                        <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1280" data-height="720">1280 x 720</button>
+                        <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="800" data-height="600">800 x 600</button>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="modal-actions">
-            <button class="mdc-button" id="close-resize-modal">
-                <span class="mdc-button__ripple"></span>
-                <span class="mdc-button__label">Cancel</span>
-            </button>
-            <button class="mdc-button mdc-button--raised" id="save-resize-settings">
-                <span class="mdc-button__ripple"></span>
-                <span class="mdc-button__label">Save Settings</span>
-            </button>
+        <div class="modal__footer">
+            <button class="btn btn--ghost" id="cancel-resize-settings">Cancel</button>
+            <button class="btn btn--primary" id="save-resize-settings">Save</button>
         </div>
     </div>
 </div>
@@ -277,21 +249,4 @@
 
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>
-    // Initialize Material Components
-    window.addEventListener('load', function() {
-        document.querySelectorAll('.mdc-checkbox').forEach(function(element) {
-            new mdc.checkbox.MDCCheckbox(element);
-        });
-        document.querySelectorAll('.mdc-radio').forEach(function(element) {
-            new mdc.radio.MDCRadio(element);
-        });
-        document.querySelectorAll('.mdc-button').forEach(function(element) {
-            new mdc.ripple.MDCRipple(element);
-        });
-        document.querySelectorAll('.mdc-text-field').forEach(function(element) {
-            new mdc.textField.MDCTextField(element);
-        });
-    });
-</script>
 {% endblock %}

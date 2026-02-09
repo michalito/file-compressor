@@ -8,54 +8,50 @@ from flask_wtf.csrf import CSRFProtect
 
 def create_app():
     app = Flask(__name__)
-    
-    # Add this near the start of create_app()
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
-    app.logger.addHandler(handler)
-    app.logger.setLevel(logging.DEBUG)
-    
+
     # Load environment variables from .env file
     load_dotenv()
-
-    # Get password from environment
-    env_password = os.getenv('APP_PASSWORD')
-    if not env_password:
-        app.logger.error("CRITICAL: APP_PASSWORD not set in environment variables")
-        raise ValueError("APP_PASSWORD must be set in environment variables")
-
-    # Generate password hash
-    env_hash = generate_password_hash(env_password)
 
     # Determine if we're in production
     is_production = os.getenv('FLASK_ENV', 'development') == 'production'
 
+    # Configure logging based on environment
+    import logging
+    log_level = logging.INFO if is_production else logging.DEBUG
+    logging.basicConfig(level=log_level)
+    handler = logging.StreamHandler()
+    handler.setLevel(log_level)
+    app.logger.addHandler(handler)
+    app.logger.setLevel(log_level)
+
+    # Get password from environment
+    env_password = os.getenv('APP_PASSWORD')
+    if not env_password:
+        raise ValueError("APP_PASSWORD must be set in environment variables")
+
+    # Validate SECRET_KEY in production
+    secret_key = os.getenv('SECRET_KEY', 'dev-key-please-change')
+    if is_production and secret_key == 'dev-key-please-change':
+        raise ValueError("SECRET_KEY must be set in production environment")
+
+    # Generate password hash
+    env_hash = generate_password_hash(env_password)
+
     # Store configuration
     app.config.update(
-        MAX_CONTENT_LENGTH=50 * 1024 * 1024,  # 50MB max file size, adjust as needed
-        SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),
-        WTF_CSRF_SECRET_KEY=os.getenv('SECRET_KEY', 'dev-key-please-change'),  # CSRF secret
-        WTF_CSRF_TIME_LIMIT=None,  # No time limit for CSRF tokens
-        WTF_CSRF_ENABLED=True,  # Enable CSRF protection
-        WTF_CSRF_CHECK_DEFAULT=True,  # Check CSRF by default
+        MAX_CONTENT_LENGTH=50 * 1024 * 1024,  # 50MB max file size
+        SECRET_KEY=secret_key,
+        WTF_CSRF_SECRET_KEY=secret_key,
+        WTF_CSRF_TIME_LIMIT=3600,  # 1 hour CSRF token expiry
+        WTF_CSRF_ENABLED=True,
+        WTF_CSRF_CHECK_DEFAULT=True,
         PASSWORD_HASH=env_hash,
-        SESSION_COOKIE_SECURE=is_production,  # Secure in production
-        SESSION_COOKIE_HTTPONLY=True,  # Always httponly for security
-        SESSION_COOKIE_SAMESITE='Lax',  # Use Lax for both dev and prod to allow CSRF
+        SESSION_COOKIE_SECURE=is_production,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='Lax',
         PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
-        SESSION_TYPE='filesystem',
-        REQUEST_TIMEOUT=60,
         PROPAGATE_EXCEPTIONS=True
     )
-
-    # Add logging for debugging
-    app.logger.info("=== Application Initialization ===")
-    app.logger.info(f"Environment: {'production' if is_production else 'development'}")
-    app.logger.info(f"SECRET_KEY set: {app.config['SECRET_KEY'] != 'dev-key-please-change'}")
-    app.logger.info(f"PASSWORD hash set: {bool(env_hash)}")
-    app.logger.info(f"Secure cookies: {app.config['SESSION_COOKIE_SECURE']}")
 
     # Configure ProxyFix for proper header handling
     if os.getenv('PROXY_FIX', 'false').lower() == 'true':
@@ -77,14 +73,21 @@ def create_app():
     csrf = CSRFProtect()
     csrf.init_app(app)
 
-    # Initialize authentication
+    # Initialize authentication and rate limiter
     auth = Auth()
     auth.init_app(app)
     app.auth = auth
-    
+    app.limiter = auth.limiter
+
     # Register blueprints
     with app.app_context():
         from app.routes import main
         app.register_blueprint(main)
-    
+
+    # Apply rate limits to routes (must store wrapped function back)
+    limiter = app.limiter
+    app.view_functions['main.login'] = limiter.limit("10 per minute")(app.view_functions['main.login'])
+    app.view_functions['main.process_image'] = limiter.limit("30 per minute")(app.view_functions['main.process_image'])
+    app.view_functions['main.download_file'] = limiter.limit("120 per minute")(app.view_functions['main.download_file'])
+
     return app

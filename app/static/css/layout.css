@@ -1,0 +1,167 @@
+/* Header */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  height: var(--header-height);
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-6);
+}
+
+.header__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.header__logo {
+  width: 28px;
+  height: 28px;
+}
+
+.header__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* App layout — CSS Grid */
+.app-layout {
+  display: grid;
+  grid-template-columns: var(--tool-panel-width) 1fr;
+  min-height: calc(100vh - var(--header-height));
+}
+
+/* Tool panel (left sidebar) */
+.tool-panel {
+  position: sticky;
+  top: var(--header-height);
+  height: calc(100vh - var(--header-height));
+  overflow-y: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background-color: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+}
+
+/* Workspace (right main area) */
+.workspace {
+  padding: var(--space-6);
+  min-width: 0;
+}
+
+/* Empty state */
+.workspace__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: var(--color-text-tertiary);
+  text-align: center;
+  gap: var(--space-4);
+}
+
+.workspace__empty-icon {
+  width: 64px;
+  height: 64px;
+  opacity: 0.4;
+}
+
+.workspace__empty-text {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+}
+
+.workspace__empty-hint {
+  font-size: var(--text-sm);
+}
+
+/* Image grid */
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-6);
+}
+
+/* Mobile toggle for tool panel */
+.tool-panel__toggle {
+  display: none;
+  position: fixed;
+  bottom: var(--space-6);
+  right: var(--space-6);
+  z-index: var(--z-sticky);
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-lg);
+  transition: background-color var(--transition-fast);
+}
+
+.tool-panel__toggle:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.tool-panel__toggle svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Tablet: single column, panel above */
+@media (max-width: 960px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-panel {
+    position: relative;
+    top: auto;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .tool-panel.is-collapsed {
+    display: none;
+  }
+
+  .tool-panel__toggle {
+    display: flex;
+  }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .header {
+    padding: 0 var(--space-4);
+  }
+
+  .tool-panel {
+    padding: var(--space-4);
+  }
+
+  .workspace {
+    padding: var(--space-4);
+  }
+
+  .image-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}

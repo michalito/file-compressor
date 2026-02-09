@@ -1,0 +1,46 @@
+/* Upload drop zone */
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-4);
+  border: 2px dashed var(--color-drop-zone-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-drop-zone);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+}
+
+.drop-zone:hover,
+.drop-zone.is-dragover {
+  background-color: var(--color-drop-zone-active);
+  border-color: var(--color-primary);
+}
+
+.drop-zone__icon {
+  width: 40px;
+  height: 40px;
+  color: var(--color-primary);
+}
+
+.drop-zone__text {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.drop-zone__hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.drop-zone__input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+}

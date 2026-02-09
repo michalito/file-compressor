@@ -1,39 +1,51 @@
 {% extends "base.html" %}
 
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/login.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="login-container">
-    <div class="mdc-card login-card">
-        <h2 class="mdc-typography--headline6">Authentication Required</h2>
-        {% if error %}
-        <div class="error-message">
-            {{ error }}
+<div class="login">
+    <div class="login__card">
+        <div class="login__header">
+            <svg class="login__icon" aria-hidden="true"><use href="#icon-lock"/></svg>
+            <h1 class="login__title">Welcome back</h1>
+            <p class="login__subtitle">Enter your password to continue</p>
         </div>
-        {% endif %}
-        <form method="POST" action="{{ url_for('main.login') }}" class="login-form" id="login-form">
-            {% if form %}
-                {{ form.csrf_token }}
-            {% else %}
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            {% endif %}
-            <div class="mdc-text-field mdc-text-field--outlined">
-                {% if form %}
-                    {{ form.password(class="mdc-text-field__input", id="password", required=true) }}
-                {% else %}
-                    <input type="password" id="password" name="password" class="mdc-text-field__input" required>
-                {% endif %}
-                <div class="mdc-notched-outline">
-                    <div class="mdc-notched-outline__leading"></div>
-                    <div class="mdc-notched-outline__notch">
-                        <label for="password" class="mdc-floating-label">Password</label>
-                    </div>
-                    <div class="mdc-notched-outline__trailing"></div>
-                </div>
+        <div class="login__body">
+            {% if error %}
+            <div class="login__error" role="alert">
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-alert-circle"/></svg>
+                <span>{{ error }}</span>
             </div>
-            <button type="submit" class="mdc-button mdc-button--raised">
-                <span class="mdc-button__ripple"></span>
-                <span class="mdc-button__label">Login</span>
-            </button>
-        </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('main.login') }}" class="login__form" id="login-form" novalidate>
+                {% if form %}
+                    {{ form.csrf_token }}
+                {% else %}
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                {% endif %}
+
+                <div class="form-field">
+                    <label for="password" class="form-label">Password</label>
+                    <div class="form-password">
+                        {% if form %}
+                            {{ form.password(class="form-input", id="password", placeholder="Enter your password", required=true, autocomplete="current-password") }}
+                        {% else %}
+                            <input type="password" id="password" name="password" class="form-input" placeholder="Enter your password" required autocomplete="current-password">
+                        {% endif %}
+                        <button type="button" id="password-toggle" class="form-password__toggle" aria-label="Show password">
+                            <svg class="icon icon--eye" width="18" height="18"><use href="#icon-eye"/></svg>
+                            <svg class="icon icon--eye-off" width="18" height="18" style="display:none"><use href="#icon-eye-off"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn--primary btn--lg btn--full">
+                    Log in
+                </button>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}

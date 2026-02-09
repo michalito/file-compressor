@@ -11,16 +11,13 @@ from werkzeug.datastructures import FileStorage
 MAX_FILENAME_LENGTH = 255
 MAX_DIMENSION = 10000  # Maximum width/height in pixels
 MIN_DIMENSION = 1
-ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'tiff', 'heic'}
+ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'tiff'}
 ALLOWED_COMPRESSION_MODES = {'lossless', 'web', 'high'}
 ALLOWED_RESIZE_MODES = {'original', 'custom'}
 ALLOWED_THEMES = {'light', 'dark'}
+ALLOWED_OUTPUT_FORMATS = {'auto', 'webp', 'jpeg'}
 MIN_QUALITY = 1
 MAX_QUALITY = 100
-
-# Regex patterns
-FILENAME_PATTERN = re.compile(r'^[\w\-. ]+$')
-DIMENSION_PATTERN = re.compile(r'^\d+$')
 
 
 def validate_file(file: FileStorage) -> Tuple[bool, Optional[str]]:
@@ -134,18 +131,21 @@ def validate_quality(quality: Optional[int]) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def validate_boolean_param(value: str) -> Tuple[bool, Optional[str]]:
+def validate_output_format(output_format: str) -> Tuple[bool, Optional[str]]:
     """
-    Validate boolean parameter.
+    Validate output format selection.
 
     Args:
-        value: String representation of boolean
+        output_format: The output format ('auto', 'webp', 'jpeg')
 
     Returns:
         Tuple of (is_valid, error_message)
     """
-    if value.lower() not in ['true', 'false']:
-        return False, "Invalid boolean value. Must be 'true' or 'false'"
+    if not output_format:
+        return False, "Output format is required"
+
+    if output_format not in ALLOWED_OUTPUT_FORMATS:
+        return False, f"Invalid output format. Allowed formats: {', '.join(ALLOWED_OUTPUT_FORMATS)}"
 
     return True, None
 
@@ -174,7 +174,7 @@ def validate_download_data(compressed_data: str, filename: str) -> Tuple[bool, O
     Validate download request data.
 
     Args:
-        compressed_data: Hex-encoded compressed image data
+        compressed_data: Base64-encoded compressed image data
         filename: The filename for download
 
     Returns:
@@ -186,10 +186,13 @@ def validate_download_data(compressed_data: str, filename: str) -> Tuple[bool, O
     if not filename:
         return False, "Filename is required"
 
-    # Validate hex data
-    try:
-        bytes.fromhex(compressed_data[:100])  # Check first 100 chars
-    except ValueError:
+    # Validate base64: must have even length divisible by 4 and contain only valid chars
+    if len(compressed_data) % 4 != 0:
+        return False, "Invalid compressed data format"
+
+    # Check a sample for valid base64 characters
+    sample = compressed_data[:200]
+    if not re.match(r'^[A-Za-z0-9+/=]+$', sample):
         return False, "Invalid compressed data format"
 
     # Check filename

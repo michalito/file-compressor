@@ -1,93 +1,69 @@
 <template id="image-tile-template">
-    <div class="preview-tile mdc-card">
-        <!-- Image Header with Selection -->
-        <div class="preview-header">
-            <div class="mdc-checkbox">
-                <input type="checkbox" class="mdc-checkbox__native-control image-select"/>
-                <div class="mdc-checkbox__background">
-                    <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
-                        <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
-                    </svg>
-                </div>
-            </div>
-            <span class="filename mdc-typography--subtitle2"></span>
+    <div class="tile" data-file-id="">
+        <!-- Header -->
+        <div class="tile__header">
+            <label class="form-checkbox">
+                <input type="checkbox" class="form-checkbox__input tile__select" aria-label="Select image">
+            </label>
+            <span class="tile__filename"></span>
+            <div class="tile__status-badges"></div>
         </div>
 
-        <!-- Image Preview with Status -->
-        <div class="image-preview">
-            <img class="preview-image" alt="Image preview of {{ filename }}" loading="lazy"/>
-            <div class="processing-status">
-                <div class="status-indicator compressed hidden" title="Image Compressed">
-                    <i class="material-icons">compress</i>
-                </div>
-                <div class="status-indicator resized hidden" title="Image Resized">
-                    <i class="material-icons">photo_size_select_large</i>
-                </div>
-            </div>
+        <!-- Preview -->
+        <div class="tile__preview">
+            <img class="tile__image" alt="" loading="lazy">
         </div>
 
-        <!-- Image Information -->
-        <div class="image-info">
-            <h3 class="info-section-title">Original</h3>
-            <div class="info-row">
-                <span class="info-label">Size:</span>
-                <span class="file-size"></span>
+        <!-- Info -->
+        <div class="tile__info">
+            <span class="tile__info-section-title">Original</span>
+            <div class="tile__info-row">
+                <span class="tile__info-label">Size</span>
+                <span class="tile__info-value tile__file-size"></span>
             </div>
-            <div class="info-row">
-                <span class="info-label">Dimensions:</span>
-                <span class="dimensions"></span>
+            <div class="tile__info-row">
+                <span class="tile__info-label">Dimensions</span>
+                <span class="tile__info-value tile__dimensions"></span>
             </div>
-            <div class="info-row">
-                <span class="info-label">Aspect Ratio:</span>
-                <span class="aspect-ratio"></span>
-            </div>
-            
-            <!-- Processing Results (Hidden by default) -->
-            <div class="processed-info hidden">
-                <h3 class="info-section-title">Final</h3>
-                <div class="info-row">
-                    <span class="info-label">Size:</span>
-                    <span class="final-size"></span>
+
+            <!-- Processed info (hidden until processing complete) -->
+            <div class="tile__processed is-hidden">
+                <span class="tile__info-section-title">Processed</span>
+                <div class="tile__info-row">
+                    <span class="tile__info-label">Size</span>
+                    <span class="tile__info-value tile__final-size"></span>
                 </div>
-                <div class="info-row">
-                    <span class="info-label">Dimensions:</span>
-                    <span class="final-dimensions"></span>
+                <div class="tile__info-row">
+                    <span class="tile__info-label">Dimensions</span>
+                    <span class="tile__info-value tile__final-dimensions"></span>
                 </div>
-                <div class="info-row">
-                    <span class="info-label">Aspect Ratio:</span>
-                    <span class="final-aspect-ratio"></span>
+                <div class="tile__info-row">
+                    <span class="tile__info-label">Format</span>
+                    <span class="tile__info-value tile__final-format"></span>
                 </div>
-                
-                <!-- Space saved banner -->
-                <div class="space-saved-banner">
-                    <i class="material-icons">save</i>
-                    <span class="space-saved"></span> space saved
+                <div class="tile__savings is-hidden">
+                    <svg class="tile__savings-icon" aria-hidden="true"><use href="#icon-archive"/></svg>
+                    <span class="tile__savings-text"></span>
                 </div>
             </div>
         </div>
 
-        <!-- Processing Progress Bar (Hidden by default) -->
-        <div class="compression-progress hidden">
-            <div class="mdc-linear-progress">
-                <div class="mdc-linear-progress__buffer"></div>
-                <div class="mdc-linear-progress__bar mdc-linear-progress__primary-bar">
-                    <span class="mdc-linear-progress__bar-inner"></span>
-                </div>
+        <!-- Progress (hidden by default) -->
+        <div class="tile__progress is-hidden">
+            <div class="progress-inline">
+                <div class="progress-inline__bar progress-inline__bar--indeterminate"></div>
             </div>
         </div>
 
-        <!-- Action Buttons -->
-        <div class="action-buttons">
-            <button class="mdc-button mdc-button--raised compact-button process-button" aria-label="Process Image">
-                <span class="mdc-button__ripple"></span>
-                <i class="material-icons mdc-button__icon">auto_fix_high</i>
-                <span class="button-text">Process</span>
+        <!-- Actions -->
+        <div class="tile__actions">
+            <button class="btn btn--primary btn--sm tile__process-btn">
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-zap"/></svg>
+                <span>Process</span>
             </button>
-
-            <button class="mdc-button mdc-button--outlined compact-button download-button" disabled aria-label="Download Image">
-                <span class="mdc-button__ripple"></span>
-                <i class="material-icons mdc-button__icon">download</i>
-                <span class="button-text">Save</span>
+            <button class="btn btn--secondary btn--sm tile__download-btn" disabled>
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-download"/></svg>
+                <span>Download</span>
             </button>
         </div>
     </div>
