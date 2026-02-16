@@ -65,11 +65,33 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .batch-progress__status {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+.batch-progress__stats {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.batch-progress__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.batch-progress__stat--success {
+  color: var(--color-success);
+}
+
+.batch-progress__stat--fail {
+  color: var(--color-error);
 }
 
 .batch-progress__time {

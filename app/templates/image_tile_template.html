@@ -2,16 +2,19 @@
     <div class="tile" data-file-id="">
         <!-- Header -->
         <div class="tile__header">
-            <label class="form-checkbox">
-                <input type="checkbox" class="form-checkbox__input tile__select" aria-label="Select image">
-            </label>
             <span class="tile__filename"></span>
             <div class="tile__status-badges"></div>
+            <button class="btn btn--icon tile__remove-btn" aria-label="Remove image" type="button">
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-x"/></svg>
+            </button>
         </div>
 
         <!-- Preview -->
         <div class="tile__preview">
             <img class="tile__image" alt="" loading="lazy">
+            <div class="tile__savings is-hidden">
+                <span class="tile__savings-text"></span>
+            </div>
         </div>
 
         <!-- Info -->
@@ -41,10 +44,6 @@
                     <span class="tile__info-label">Format</span>
                     <span class="tile__info-value tile__final-format"></span>
                 </div>
-                <div class="tile__savings is-hidden">
-                    <svg class="tile__savings-icon" aria-hidden="true"><use href="#icon-archive"/></svg>
-                    <span class="tile__savings-text"></span>
-                </div>
             </div>
         </div>
 
@@ -57,11 +56,11 @@
 
         <!-- Actions -->
         <div class="tile__actions">
-            <button class="btn btn--primary btn--sm tile__process-btn">
-                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-zap"/></svg>
-                <span>Process</span>
+            <button class="btn btn--ghost btn--sm tile__retry-btn is-hidden">
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-refresh-cw"/></svg>
+                <span>Retry</span>
             </button>
-            <button class="btn btn--secondary btn--sm tile__download-btn" disabled>
+            <button class="btn btn--secondary btn--sm tile__download-btn" disabled title="Processing...">
                 <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-download"/></svg>
                 <span>Download</span>
             </button>

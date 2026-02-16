@@ -10,13 +10,12 @@ const STORAGE_KEY = 'compressify_settings';
 const defaultState = {
   // Settings (persisted)
   settings: {
-    compress: { mode: 'lossless', outputFormat: 'auto' },
+    compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
     resize: { mode: 'original', width: null, height: null },
   },
 
   // Files (runtime only)
-  files: new Map(),          // fileId → { file, status, blobUrl, processedData }
-  selectedFiles: new Set(),  // Set of fileIds
+  files: new Map(),          // fileId → { file, status, blobUrl, processedData, processedWithSettings }
 
   // UI state
   processing: false,
@@ -67,9 +66,10 @@ export function getSettings() {
 export function addFile(fileId, file, blobUrl) {
   state.files.set(fileId, {
     file,
-    status: 'pending',       // pending | processing | done | error
+    status: 'pending',       // pending | processing | done | error | cancelled
     blobUrl,
     processedData: null,     // { data, filename, metadata }
+    processedWithSettings: null,
     errorMessage: null,
   });
   bus.emit('files:added', { fileId });
@@ -84,10 +84,8 @@ export function removeFile(fileId) {
   if (entry) {
     if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl);
     state.files.delete(fileId);
-    state.selectedFiles.delete(fileId);
     bus.emit('files:removed', { fileId });
     bus.emit('files:countChanged', { total: state.files.size });
-    bus.emit('selection:changed', { selected: state.selectedFiles.size });
   }
 }
 
@@ -103,27 +101,13 @@ export function updateFile(fileId, updates) {
 }
 
 /**
- * Toggle file selection.
+ * Clear all files from state and revoke blob URLs.
  */
-export function toggleFileSelection(fileId, selected) {
-  if (selected) {
-    state.selectedFiles.add(fileId);
-  } else {
-    state.selectedFiles.delete(fileId);
+export function clearAllFiles() {
+  for (const entry of state.files.values()) {
+    if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl);
   }
-  bus.emit('selection:changed', { selected: state.selectedFiles.size, total: state.files.size });
-}
-
-/**
- * Select/deselect all files.
- */
-export function selectAll(selected) {
-  if (selected) {
-    for (const fileId of state.files.keys()) {
-      state.selectedFiles.add(fileId);
-    }
-  } else {
-    state.selectedFiles.clear();
-  }
-  bus.emit('selection:changed', { selected: state.selectedFiles.size, total: state.files.size });
+  state.files.clear();
+  bus.emit('files:cleared');
+  bus.emit('files:countChanged', { total: 0 });
 }

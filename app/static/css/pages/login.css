@@ -35,9 +35,15 @@
   color: var(--color-text);
 }
 
-.login__subtitle {
+.login__tagline {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+  margin-top: var(--space-2);
+}
+
+.login__subtitle {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
   margin-top: var(--space-1);
 }
 
@@ -65,4 +71,10 @@
 
 .login__error .icon {
   flex-shrink: 0;
+}
+
+/* Rate-limit specific error — warning style */
+.login__error--rate-limit {
+  color: var(--color-warning);
+  background-color: var(--color-warning-subtle);
 }

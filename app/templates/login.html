@@ -8,14 +8,19 @@
 <div class="login">
     <div class="login__card">
         <div class="login__header">
-            <svg class="login__icon" aria-hidden="true"><use href="#icon-lock"/></svg>
-            <h1 class="login__title">Welcome back</h1>
+            <svg class="login__icon" aria-hidden="true"><use href="#icon-zap"/></svg>
+            <h1 class="login__title">Compressify</h1>
+            <p class="login__tagline">Fast, private image compression in your browser</p>
             <p class="login__subtitle">Enter your password to continue</p>
         </div>
         <div class="login__body">
             {% if error %}
-            <div class="login__error" role="alert">
+            <div class="login__error{% if 'Too many' in error %} login__error--rate-limit{% endif %}" role="alert">
+                {% if 'Too many' in error %}
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-alert-triangle"/></svg>
+                {% else %}
                 <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-alert-circle"/></svg>
+                {% endif %}
                 <span>{{ error }}</span>
             </div>
             {% endif %}

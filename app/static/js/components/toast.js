@@ -10,6 +10,14 @@ const ICON_MAP = {
   info: 'info',
 };
 
+// Map toast types to ARIA roles for screen reader announcements
+const ROLE_MAP = {
+  error: 'alert',    // assertive
+  warning: 'alert',  // assertive
+  success: 'status', // polite
+  info: 'status',    // polite
+};
+
 const DURATION = 5000;
 
 /**
@@ -33,7 +41,9 @@ export function showToast({ message, type = 'info', duration = DURATION }) {
   const closeIcon = icon('x', 16);
   closeBtn.appendChild(closeIcon);
 
-  const toast = createElement('div', { class: `toast toast--${type}`, role: 'alert' },
+  const role = ROLE_MAP[type] || 'status';
+
+  const toast = createElement('div', { class: `toast toast--${type}`, role },
     iconEl,
     createElement('div', { class: 'toast__body' },
       createElement('p', { class: 'toast__message' }, message)
@@ -43,12 +53,21 @@ export function showToast({ message, type = 'info', duration = DURATION }) {
 
   container.appendChild(toast);
 
+  let dismissed = false;
   const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
     toast.classList.add('is-leaving');
     toast.addEventListener('animationend', () => toast.remove(), { once: true });
+    // Fallback removal if animation doesn't fire
+    setTimeout(() => toast.remove(), 300);
   };
 
-  closeBtn.addEventListener('click', dismiss);
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+  toast.addEventListener('click', dismiss);
 
   if (duration > 0) {
     setTimeout(dismiss, duration);

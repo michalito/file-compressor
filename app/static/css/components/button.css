@@ -107,15 +107,40 @@
   width: 100%;
 }
 
-/* Theme toggle icon visibility */
-[data-theme="light"] .icon--moon,
-[data-theme="dark"] .icon--sun {
-  display: none;
+/* Theme toggle — crossfade animation */
+.theme-toggle {
+  position: relative;
 }
 
-[data-theme="light"] .icon--sun,
-[data-theme="dark"] .icon--moon {
-  display: block;
+.theme-toggle .icon--sun,
+.theme-toggle .icon--moon {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.theme-toggle .icon--moon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+[data-theme="light"] .theme-toggle .icon--sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+[data-theme="light"] .theme-toggle .icon--moon {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.5);
+}
+
+[data-theme="dark"] .theme-toggle .icon--sun {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.5);
+}
+
+[data-theme="dark"] .theme-toggle .icon--moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
 }
 
 /* Button label hidden on mobile */

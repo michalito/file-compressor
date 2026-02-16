@@ -166,6 +166,59 @@ class ImageCompressor:
             return extrema[0] < 255
         return False
 
+    def _save_as_png(self, img: Image.Image, strip_metadata: bool = True) -> bytes:
+        """Save image as optimized PNG."""
+        output = io.BytesIO()
+        save_params = {'format': 'PNG', 'optimize': True, 'compress_level': 9}
+        if not strip_metadata:
+            icc_profile = img.info.get('icc_profile')
+            if icc_profile:
+                save_params['icc_profile'] = icc_profile
+        img.save(output, **save_params)
+        return output.getvalue()
+
+    def _save_as_webp_lossless(self, img: Image.Image, strip_metadata: bool = True) -> bytes:
+        """Save image as lossless WebP (for format conversion without quality loss)."""
+        output = io.BytesIO()
+        if img.mode in ('RGBA', 'LA'):
+            processed = img if img.mode == 'RGBA' else img.convert('RGBA')
+        elif img.mode == 'RGB':
+            processed = img
+        else:
+            processed = img.convert('RGB')
+        save_params = {'format': 'WEBP', 'lossless': True, 'quality': 80}
+        if not strip_metadata:
+            icc_profile = img.info.get('icc_profile')
+            if icc_profile:
+                save_params['icc_profile'] = icc_profile
+        processed.save(output, **save_params)
+        return output.getvalue()
+
+    def _save_as_jpeg_quality(self, img: Image.Image, quality: Optional[int] = None,
+                              strip_metadata: bool = True) -> bytes:
+        """Save image as high-quality JPEG (for format conversion with minimal loss)."""
+        output = io.BytesIO()
+        processed = self._remove_transparency(img)
+        if processed.mode != 'RGB':
+            processed = processed.convert('RGB')
+        save_params = {
+            'format': 'JPEG',
+            'quality': quality if quality is not None else 95,
+            'optimize': True,
+            'progressive': True,
+        }
+        # 'keep' subsampling only valid when source is JPEG
+        if img.format in ('JPEG', 'JPG'):
+            save_params['subsampling'] = 'keep'
+        if not strip_metadata:
+            if img.info.get('exif'):
+                save_params['exif'] = img.info['exif']
+            icc_profile = img.info.get('icc_profile')
+            if icc_profile:
+                save_params['icc_profile'] = icc_profile
+        processed.save(output, **save_params)
+        return output.getvalue()
+
     def _compress_lossless(self, img: Image.Image, quality: Optional[int] = None, use_webp: bool = False) -> bytes:
         """
         Lossless compression - maintains original quality while reducing file size.
@@ -330,12 +383,16 @@ class ImageCompressor:
         original_size = len(image_data)
         original_dimensions = img.size
 
-        # Resolve output_format to use_webp bool (lossless ignores this)
+        # Resolve output_format to use_webp / target_png bools
         format_warnings: List[str] = []
         has_transparency = self._has_transparency(img)
+        target_png = False
 
-        if mode == 'lossless':
-            use_webp = False  # Ignored — lossless preserves original format
+        if mode == 'lossless' and output_format == 'auto':
+            use_webp = False  # Preserves original format
+        elif output_format == 'png':
+            target_png = True
+            use_webp = False
         elif output_format == 'webp':
             use_webp = True
         elif output_format == 'jpeg':
@@ -344,7 +401,7 @@ class ImageCompressor:
                 format_warnings.append(
                     "JPEG does not support transparency — transparent areas will become white"
                 )
-        else:  # 'auto'
+        else:  # 'auto' (non-lossless)
             use_webp = has_transparency
             if has_transparency:
                 format_warnings.append(
@@ -356,14 +413,23 @@ class ImageCompressor:
             img = self._resize_image(img, max_width, max_height)
 
         # Apply compression based on mode
-        compressed_data = self.compression_modes[mode](img, quality, use_webp)
+        # For explicit format targets, bypass mode dispatch with format-specific methods
+        strip_metadata = mode != 'lossless'
+        if target_png:
+            compressed_data = self._save_as_png(img, strip_metadata=strip_metadata)
+        elif mode == 'lossless' and output_format == 'webp':
+            compressed_data = self._save_as_webp_lossless(img, strip_metadata=False)
+        elif mode == 'lossless' and output_format == 'jpeg':
+            compressed_data = self._save_as_jpeg_quality(img, quality, strip_metadata=False)
+        else:
+            compressed_data = self.compression_modes[mode](img, quality, use_webp)
 
         # Calculate compression ratio and prepare metadata
         compression_ratio = round(len(compressed_data) / original_size * 100, 2)
 
         # If high compression didn't achieve better than 50% reduction,
         # try more aggressive settings (don't increase quality above what was asked)
-        if mode == 'high' and compression_ratio > 50:
+        if mode == 'high' and not target_png and compression_ratio > 50:
             retry_quality = min(quality, 30) if quality is not None else 30
             retry_data = self._compress_high(img, quality=retry_quality, use_webp=use_webp)
             retry_ratio = round(len(retry_data) / original_size * 100, 2)
@@ -378,7 +444,11 @@ class ImageCompressor:
                             compression_ratio, retry_ratio)
 
         # Determine actual output format based on mode and settings
-        if mode == 'lossless':
+        if target_png:
+            resolved_format = 'PNG'
+        elif mode == 'lossless' and output_format in ('webp', 'jpeg'):
+            resolved_format = output_format.upper()
+        elif mode == 'lossless':
             resolved_format = original_format or 'PNG'
         elif use_webp:
             resolved_format = 'WEBP'
@@ -392,6 +462,7 @@ class ImageCompressor:
             'final_dimensions': img.size,
             'compression_ratio': compression_ratio,
             'format': resolved_format,
+            'original_format': original_format,
             'format_warnings': format_warnings
         }
 

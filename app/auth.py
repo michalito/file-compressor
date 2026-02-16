@@ -43,8 +43,12 @@ class Auth:
         ip = get_remote_address()
 
         # Check lockout BEFORE try/except so RateLimitExceeded propagates
-        if self._is_locked_out(ip):
-            raise RateLimitExceeded("Too many login attempts. Try again later.")
+        remaining = self._lockout_remaining(ip)
+        if remaining > 0:
+            minutes = max(1, int(remaining // 60) + (1 if remaining % 60 > 0 else 0))
+            raise RateLimitExceeded(
+                f"Too many login attempts. Try again in {minutes} minute{'s' if minutes != 1 else ''}."
+            )
 
         try:
             env_hash = current_app.config.get('PASSWORD_HASH')
@@ -71,14 +75,19 @@ class Auth:
 
     def _is_locked_out(self, ip):
         """Check if IP is locked out due to too many failed attempts"""
+        return self._lockout_remaining(ip) > 0
+
+    def _lockout_remaining(self, ip):
+        """Return remaining lockout seconds for IP, or 0 if not locked out."""
         with self._lock:
             if ip in self.login_attempts:
                 attempts = self.login_attempts[ip]
                 if attempts['count'] >= self.max_attempts:
-                    if time.time() - attempts['last_attempt'] < self.lockout_time:
-                        return True
+                    elapsed = time.time() - attempts['last_attempt']
+                    if elapsed < self.lockout_time:
+                        return self.lockout_time - elapsed
                     self._reset_attempts_unlocked(ip)
-            return False
+            return 0
 
     def _record_failed_attempt(self, ip):
         """Record a failed login attempt"""

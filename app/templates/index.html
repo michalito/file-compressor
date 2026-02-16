@@ -2,83 +2,43 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/upload.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/tool-card.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/image-tile.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/action-bar.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/settings-panel.css') }}">
 {% endblock %}
 
 {% block content %}
 <div class="app-layout">
-    <!-- Tool Panel (Left Sidebar) -->
-    <aside class="tool-panel" id="tool-panel">
-        <!-- Upload Zone -->
-        <div class="drop-zone" tabindex="0" role="button" aria-label="Upload images">
-            <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff,.tif" class="drop-zone__input">
-            <svg class="drop-zone__icon" aria-hidden="true"><use href="#icon-upload"/></svg>
-            <p class="drop-zone__text">Drop images here or click to browse</p>
-            <p class="drop-zone__hint">JPG, PNG, WebP, TIFF</p>
-        </div>
-
-        <!-- Settings Tools -->
-        <span class="tool-panel__section-title">Settings</span>
-
-        <!-- Compression Tool Card -->
-        <div class="tool-card" id="compress-tool-card" role="button" tabindex="0" aria-label="Compression settings">
-            <div class="tool-card__icon">
-                <svg aria-hidden="true"><use href="#icon-zap"/></svg>
-            </div>
-            <div class="tool-card__body">
-                <div class="tool-card__title">Compression</div>
-                <div class="tool-card__summary" id="compress-summary">Lossless</div>
-            </div>
-            <div class="tool-card__arrow">
-                <svg aria-hidden="true"><use href="#icon-settings"/></svg>
-            </div>
-        </div>
-
-        <!-- Resize Tool Card -->
-        <div class="tool-card" id="resize-tool-card" role="button" tabindex="0" aria-label="Resize settings">
-            <div class="tool-card__icon">
-                <svg aria-hidden="true"><use href="#icon-maximize"/></svg>
-            </div>
-            <div class="tool-card__body">
-                <div class="tool-card__title">Resize</div>
-                <div class="tool-card__summary" id="resize-summary">Original Size</div>
-            </div>
-            <div class="tool-card__arrow">
-                <svg aria-hidden="true"><use href="#icon-settings"/></svg>
-            </div>
-        </div>
-    </aside>
-
-    <!-- Workspace (Right Main Area) -->
     <div class="workspace">
-        <!-- Action Bar (hidden until files added) -->
-        <div class="action-bar is-hidden" id="action-bar">
-            <div class="action-bar__left">
-                <label class="form-checkbox">
-                    <input type="checkbox" id="select-all" class="form-checkbox__input">
-                    <span class="form-checkbox__label">Select All</span>
-                </label>
-                <div class="action-bar__stats">
-                    <span class="action-bar__stat">
-                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-image"/></svg>
-                        <span id="total-files-count">0</span> files
-                    </span>
-                    <span class="action-bar__stat">
-                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-check"/></svg>
-                        <span id="selected-files-count">0</span> selected
-                    </span>
-                </div>
+        <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff,.tif" class="sr-only">
+
+        <!-- Workspace Toolbar (hidden until files added) -->
+        <div class="workspace-toolbar is-hidden" id="workspace-toolbar">
+            <div class="workspace-toolbar__left">
+                <span class="workspace-toolbar__stat">
+                    <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-image"/></svg>
+                    <span id="total-files-count">0</span> files
+                </span>
             </div>
-            <div class="action-bar__right">
-                <button class="btn btn--primary btn--sm" id="process-selected" disabled>
-                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-zap"/></svg>
-                    <span>Process</span>
+            <div class="workspace-toolbar__right">
+                <button class="btn btn--ghost btn--sm" id="add-more-btn">
+                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-plus"/></svg>
+                    <span>Add More</span>
                 </button>
-                <button class="btn btn--secondary btn--sm" id="download-selected" disabled>
+                <button class="btn btn--ghost btn--sm workspace-toolbar__reprocess-btn is-hidden" id="reprocess-all">
+                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-refresh-cw"/></svg>
+                    <span>Re-process</span>
+                </button>
+                <button class="btn btn--ghost btn--sm workspace-toolbar__retry-btn is-hidden" id="retry-failed">
+                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-refresh-cw"/></svg>
+                    <span>Retry Failed</span>
+                </button>
+                <button class="btn btn--secondary btn--sm" id="download-all" disabled title="Processing...">
                     <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-download"/></svg>
-                    <span>Download</span>
+                    <span>Download All</span>
+                </button>
+                <button class="btn btn--ghost btn--sm" id="clear-all">
+                    <span>Clear All</span>
                 </button>
             </div>
         </div>
@@ -86,9 +46,19 @@
         <!-- Batch Progress (hidden by default) -->
         <div class="batch-progress is-hidden" id="batch-progress">
             <div class="batch-progress__header">
-                <span class="batch-progress__status">
+                <span class="batch-progress__status" role="status" aria-live="polite">
                     Processing: <span id="processed-count">0</span>/<span id="total-count">0</span>
                 </span>
+                <div class="batch-progress__stats">
+                    <span class="batch-progress__stat batch-progress__stat--success is-hidden" id="batch-succeeded">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-check-circle"/></svg>
+                        <span id="batch-success-count">0</span>
+                    </span>
+                    <span class="batch-progress__stat batch-progress__stat--fail is-hidden" id="batch-failed">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-alert-circle"/></svg>
+                        <span id="batch-fail-count">0</span>
+                    </span>
+                </div>
                 <span class="batch-progress__time" id="time-remaining"></span>
             </div>
             <div class="progress-inline">
@@ -97,11 +67,82 @@
             <button class="btn btn--ghost btn--sm" id="cancel-batch">Cancel</button>
         </div>
 
-        <!-- Empty State -->
+        <!-- Empty State (active drop zone) -->
         <div class="workspace__empty" id="workspace-empty">
-            <svg class="workspace__empty-icon" aria-hidden="true"><use href="#icon-image"/></svg>
-            <p class="workspace__empty-text">No images yet</p>
-            <p class="workspace__empty-hint">Upload images using the panel on the left, or drag and drop them anywhere</p>
+            <svg class="workspace__empty-icon" aria-hidden="true"><use href="#icon-upload"/></svg>
+            <p class="workspace__empty-text">Drop images here to get started</p>
+            <button type="button" class="btn btn--primary workspace__empty-cta" id="workspace-browse-btn">
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-upload"/></svg>
+                <span>Choose Images</span>
+            </button>
+            <!-- Settings Panel -->
+            <section class="settings-panel is-expanded" id="settings-panel">
+                <button type="button" class="settings-panel__header" id="settings-toggle" aria-expanded="true" aria-controls="settings-body">
+                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-sliders"/></svg>
+                    <span class="settings-panel__summary" id="settings-summary">Lossless &middot; Original size</span>
+                    <svg class="icon settings-panel__chevron" width="16" height="16" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
+                </button>
+                <div class="settings-panel__body" id="settings-body">
+                    <!-- Compression -->
+                    <fieldset class="settings-panel__fieldset">
+                        <legend class="settings-panel__legend">Compression</legend>
+                        <div class="segmented-control" role="radiogroup" aria-label="Compression mode" id="compression-mode-control">
+                            <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="lossless">Lossless</button>
+                            <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="web">Balanced</button>
+                            <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="high">Maximum</button>
+                        </div>
+                        <p class="settings-panel__hint" id="compression-hint">Highest quality, preserves original format</p>
+
+                        <div class="quality-slider is-hidden" id="quality-slider-group">
+                            <div class="quality-slider__header">
+                                <label class="quality-slider__label" for="quality-slider">Quality</label>
+                                <output class="quality-slider__value" id="quality-value" for="quality-slider">80</output>
+                            </div>
+                            <input type="range" class="quality-slider__input" id="quality-slider" min="1" max="100" value="80">
+                            <div class="quality-slider__range-labels">
+                                <span>Smaller file</span>
+                                <span>Better quality</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-panel__format-row" id="format-row">
+                            <span class="settings-panel__format-label">Output format</span>
+                            <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Output format" id="format-control">
+                                <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="auto">Auto</button>
+                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="png">PNG</button>
+                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="webp">WebP</button>
+                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="jpeg">JPEG</button>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Resize -->
+                    <fieldset class="settings-panel__fieldset">
+                        <legend class="settings-panel__legend">Resize</legend>
+                        <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Resize mode" id="resize-mode-control">
+                            <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="original">Original</button>
+                            <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="custom">Custom</button>
+                        </div>
+
+                        <div class="is-hidden" id="custom-size-section">
+                            <div class="dimensions-row">
+                                <label class="dimensions-row__label sr-only" for="custom-width">Width</label>
+                                <input type="number" class="dimensions-row__input" id="custom-width" min="1" max="10000" placeholder="W" aria-label="Width in pixels">
+                                <span class="dimensions-row__sep" aria-hidden="true">&times;</span>
+                                <label class="dimensions-row__label sr-only" for="custom-height">Height</label>
+                                <input type="number" class="dimensions-row__input" id="custom-height" min="1" max="10000" placeholder="H" aria-label="Height in pixels">
+                                <span class="dimensions-row__label">px</span>
+                            </div>
+                            <div class="preset-buttons">
+                                <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1920" data-height="1080">Full HD</button>
+                                <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1280" data-height="720">HD</button>
+                                <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="800" data-height="600">Web</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </section>
+            <p class="workspace__empty-formats">JPG, PNG, WebP, TIFF &middot; Max 50 MB per file</p>
         </div>
 
         <!-- Image Grid -->
@@ -111,140 +152,6 @@
     </div>
 </div>
 
-<!-- Mobile Tool Panel Toggle -->
-<button class="tool-panel__toggle" id="tool-panel-toggle" aria-label="Toggle settings panel">
-    <svg aria-hidden="true"><use href="#icon-sliders"/></svg>
-</button>
-
-<!-- ─── Compression Settings Modal ─── -->
-<div class="modal" id="compression-modal" role="dialog" aria-modal="true" aria-labelledby="compression-modal-title">
-    <div class="modal__content">
-        <div class="modal__header">
-            <h2 class="modal__title" id="compression-modal-title">Compression Settings</h2>
-            <button class="modal__close" id="close-compress-modal" aria-label="Close">
-                <svg width="20" height="20" aria-hidden="true"><use href="#icon-x"/></svg>
-            </button>
-        </div>
-        <div class="modal__body">
-            <div class="form-radio-group">
-                <label class="form-radio">
-                    <input type="radio" name="compression-type" value="lossless" class="form-radio__input" checked>
-                    <div class="form-radio__content">
-                        <span class="form-radio__label">Lossless</span>
-                        <span class="form-radio__description">Highest quality, preserves original format</span>
-                    </div>
-                </label>
-                <label class="form-radio">
-                    <input type="radio" name="compression-type" value="web" class="form-radio__input">
-                    <div class="form-radio__content">
-                        <span class="form-radio__label">Web Optimized</span>
-                        <span class="form-radio__description">Balanced quality and size, targets ~200KB</span>
-                    </div>
-                </label>
-                <label class="form-radio">
-                    <input type="radio" name="compression-type" value="high" class="form-radio__input">
-                    <div class="form-radio__content">
-                        <span class="form-radio__label">Maximum Compression</span>
-                        <span class="form-radio__description">Smallest file size, targets &lt;100KB</span>
-                    </div>
-                </label>
-            </div>
-
-            <!-- Output Format Section (shown for web/high) -->
-            <div id="output-format-section" class="is-hidden" style="margin-top: var(--space-6)">
-                <div class="form-radio-group">
-                    <span class="form-radio-group__label">Output Format</span>
-                    <label class="form-radio">
-                        <input type="radio" name="output-format" value="auto" class="form-radio__input" checked>
-                        <div class="form-radio__content">
-                            <span class="form-radio__label">Auto (Recommended)</span>
-                            <span class="form-radio__description">Detects transparency and picks the best format</span>
-                        </div>
-                    </label>
-                    <label class="form-radio">
-                        <input type="radio" name="output-format" value="webp" class="form-radio__input">
-                        <div class="form-radio__content">
-                            <span class="form-radio__label">WebP</span>
-                            <span class="form-radio__description">Good compression, supports transparency</span>
-                        </div>
-                    </label>
-                    <label class="form-radio">
-                        <input type="radio" name="output-format" value="jpeg" class="form-radio__input">
-                        <div class="form-radio__content">
-                            <span class="form-radio__label">JPEG</span>
-                            <span class="form-radio__description">Maximum compatibility, no transparency</span>
-                        </div>
-                    </label>
-                </div>
-            </div>
-        </div>
-        <div class="modal__footer">
-            <button class="btn btn--ghost" id="cancel-compress-settings">Cancel</button>
-            <button class="btn btn--primary" id="save-compress-settings">Save</button>
-        </div>
-    </div>
-</div>
-
-<!-- ─── Resize Settings Modal ─── -->
-<div class="modal" id="resize-modal" role="dialog" aria-modal="true" aria-labelledby="resize-modal-title">
-    <div class="modal__content">
-        <div class="modal__header">
-            <h2 class="modal__title" id="resize-modal-title">Resize Settings</h2>
-            <button class="modal__close" id="close-resize-modal" aria-label="Close">
-                <svg width="20" height="20" aria-hidden="true"><use href="#icon-x"/></svg>
-            </button>
-        </div>
-        <div class="modal__body">
-            <div class="form-radio-group">
-                <label class="form-radio">
-                    <input type="radio" name="resize-type" value="original" class="form-radio__input" checked>
-                    <div class="form-radio__content">
-                        <span class="form-radio__label">Keep Original Size</span>
-                    </div>
-                </label>
-                <label class="form-radio">
-                    <input type="radio" name="resize-type" value="custom" id="custom-size" class="form-radio__input">
-                    <div class="form-radio__content">
-                        <span class="form-radio__label">Custom Size</span>
-                    </div>
-                </label>
-            </div>
-
-            <!-- Custom size controls -->
-            <div class="custom-size-controls is-hidden" style="margin-top: var(--space-4)">
-                <div class="form-row">
-                    <div class="form-field">
-                        <label for="custom-width" class="form-label">Width (px)</label>
-                        <input type="number" id="custom-width" class="form-input" min="1" max="10000" placeholder="Width">
-                    </div>
-                    <div class="form-field">
-                        <label for="custom-height" class="form-label">Height (px)</label>
-                        <input type="number" id="custom-height" class="form-input" min="1" max="10000" placeholder="Height">
-                    </div>
-                </div>
-
-                <p class="form-hint" style="margin-top: var(--space-3)">
-                    <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
-                    Dimensions are linked — changing one auto-calculates the other. Images are scaled to fit within the specified size while preserving aspect ratio. Smaller images are not upscaled.
-                </p>
-
-                <!-- Size presets -->
-                <div style="margin-top: var(--space-4)">
-                    <span class="text-xs font-semibold text-secondary" style="margin-bottom: var(--space-2); display: block;">Common Sizes</span>
-                    <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
-                        <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1920" data-height="1080">1920 x 1080</button>
-                        <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1280" data-height="720">1280 x 720</button>
-                        <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="800" data-height="600">800 x 600</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="modal__footer">
-            <button class="btn btn--ghost" id="cancel-resize-settings">Cancel</button>
-            <button class="btn btn--primary" id="save-resize-settings">Save</button>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}

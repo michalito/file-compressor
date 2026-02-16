@@ -1,150 +1,306 @@
 /**
- * Batch operations: selection, queue processing, ZIP download.
+ * Batch operations: auto-process, queue processing, ZIP download, file management.
  */
-import { $, $$, downloadBlob } from '../lib/dom.js';
+import { $, downloadBlob } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import { postJSON } from '../lib/api.js';
-import { state, selectAll } from '../state/app-state.js';
+import { state, clearAllFiles, updateFile } from '../state/app-state.js';
 import { processTile, base64ToUint8Array } from './image-tile.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 
 let processing = false;
-let cancelled = false;
+let abortController = null;
 const CHUNK_SIZE = 5;
 
 export function initBatch() {
-  const selectAllCheckbox = $('#select-all');
-  const processBtn = $('#process-selected');
-  const downloadBtn = $('#download-selected');
+  const clearBtn = $('#clear-all');
   const cancelBtn = $('#cancel-batch');
-  const panelToggle = $('#tool-panel-toggle');
+  const downloadBtn = $('#download-all');
+  const retryFailedBtn = $('#retry-failed');
+  const reprocessBtn = $('#reprocess-all');
 
-  // Select All
-  if (selectAllCheckbox) {
-    selectAllCheckbox.addEventListener('change', (e) => {
-      const checked = e.target.checked;
-      selectAll(checked);
+  // Auto-process when files are added
+  bus.on('files:autoProcess', async ({ fileIds }) => {
+    if (processing) return;
+    await runBatch(fileIds);
+  });
 
-      // Update individual checkboxes
-      $$('.tile__select').forEach((cb) => {
-        cb.checked = checked;
-        cb.closest('.tile')?.classList.toggle('is-selected', checked);
-      });
+  // Download All
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => downloadAll());
+  }
+
+  // Clear All (with confirmation)
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      const count = state.files.size;
+      if (count === 0) return;
+      if (!confirm(`Clear all ${count} file${count > 1 ? 's' : ''}? Processed results will be lost.`)) return;
+      clearAllFiles();
     });
   }
 
-  // Process Selected
-  if (processBtn) {
-    processBtn.addEventListener('click', () => processSelected());
+  // Retry Failed
+  if (retryFailedBtn) {
+    retryFailedBtn.addEventListener('click', () => retryFailed());
   }
 
-  // Download Selected
-  if (downloadBtn) {
-    downloadBtn.addEventListener('click', () => downloadSelected());
+  // Re-process all done files with new settings
+  if (reprocessBtn) {
+    reprocessBtn.addEventListener('click', () => reprocessAll());
   }
 
   // Cancel batch
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
-      cancelled = true;
+      if (abortController) {
+        abortController.abort();
+      }
     });
   }
 
-  // Mobile tool panel toggle
-  if (panelToggle) {
-    panelToggle.addEventListener('click', () => {
-      const panel = $('#tool-panel');
-      if (panel) panel.classList.toggle('is-collapsed');
-    });
-  }
-
-  // Listen for file count changes to show/hide action bar
+  // Show/hide toolbar based on file count
   bus.on('files:countChanged', ({ total }) => {
-    const actionBar = $('#action-bar');
-    if (actionBar) {
-      actionBar.classList.toggle('is-hidden', total === 0);
+    const toolbar = $('#workspace-toolbar');
+    if (toolbar) {
+      toolbar.classList.toggle('is-hidden', total === 0);
     }
     const el = $('#total-files-count');
     if (el) el.textContent = total;
   });
 
-  // Listen for selection changes to update UI
-  bus.on('selection:changed', ({ selected }) => {
-    const hasSelection = selected > 0;
-    if (processBtn) processBtn.disabled = !hasSelection;
-    if (downloadBtn) downloadBtn.disabled = !hasSelection;
-    const el = $('#selected-files-count');
-    if (el) el.textContent = selected;
+  // Update Download All button and Retry Failed visibility when file statuses change
+  bus.on('file:updated', () => {
+    updateDownloadAllState();
+    updateRetryFailedVisibility();
+    updateReprocessVisibility();
+  });
+  bus.on('files:cleared', () => {
+    updateDownloadAllState();
+    updateRetryFailedVisibility();
+    updateReprocessVisibility();
+  });
+  bus.on('files:removed', () => {
+    updateDownloadAllState();
+    updateRetryFailedVisibility();
+    updateReprocessVisibility();
+  });
+
+  // Re-process detection: when settings change, check if any done files used different settings
+  bus.on('settings:changed', () => {
+    updateReprocessVisibility();
   });
 }
 
 /**
- * Process all selected files.
- * Delegates per-tile processing to image-tile.js processTile().
+ * Enable/disable the Download All button based on whether any files have been processed.
  */
-async function processSelected() {
+function updateDownloadAllState() {
+  const btn = $('#download-all');
+  if (!btn) return;
+  const hasDone = [...state.files.values()].some((e) => e.status === 'done' && e.processedData);
+  btn.disabled = !hasDone;
+  btn.title = hasDone ? '' : 'Processing...';
+}
+
+/**
+ * Show/hide the "Retry Failed" button.
+ */
+function updateRetryFailedVisibility() {
+  const btn = $('#retry-failed');
+  if (!btn) return;
+  const hasErrors = [...state.files.values()].some((e) => e.status === 'error');
+  btn.classList.toggle('is-hidden', !hasErrors);
+}
+
+/**
+ * Show/hide the "Re-process" button when settings have changed since last processing.
+ */
+function updateReprocessVisibility() {
+  const btn = $('#reprocess-all');
+  if (!btn) return;
+
+  const currentSettings = JSON.stringify(state.settings);
+  const needsReprocess = [...state.files.values()].some((e) => {
+    if (e.status !== 'done' || !e.processedWithSettings) return false;
+    return JSON.stringify(e.processedWithSettings) !== currentSettings;
+  });
+
+  btn.classList.toggle('is-hidden', !needsReprocess);
+}
+
+/**
+ * Retry all failed files.
+ */
+async function retryFailed() {
   if (processing) return;
 
-  const selectedIds = [...state.selectedFiles];
-  if (selectedIds.length === 0) return;
+  const failedIds = [...state.files.entries()]
+    .filter(([, entry]) => entry.status === 'error')
+    .map(([id]) => id);
 
+  if (failedIds.length === 0) return;
+
+  // Reset each failed tile's state
+  failedIds.forEach((fileId) => {
+    const tile = document.querySelector(`[data-file-id="${fileId}"]`);
+    if (tile) {
+      tile.classList.remove('is-error');
+      const errorEl = tile.querySelector('.tile__error');
+      if (errorEl) errorEl.remove();
+      const retryBtn = tile.querySelector('.tile__retry-btn');
+      if (retryBtn) retryBtn.classList.add('is-hidden');
+    }
+    updateFile(fileId, { status: 'pending', errorMessage: null });
+  });
+
+  await runBatch(failedIds);
+}
+
+/**
+ * Re-process all done files with current settings.
+ */
+async function reprocessAll() {
+  if (processing) return;
+
+  const currentSettings = JSON.stringify(state.settings);
+  const doneIds = [...state.files.entries()]
+    .filter(([, entry]) => {
+      if (entry.status !== 'done' || !entry.processedWithSettings) return false;
+      return JSON.stringify(entry.processedWithSettings) !== currentSettings;
+    })
+    .map(([id]) => id);
+
+  if (doneIds.length === 0) return;
+
+  // Reset done files to pending
+  doneIds.forEach((fileId) => {
+    updateFile(fileId, { status: 'pending', processedData: null, processedWithSettings: null });
+    const tile = document.querySelector(`[data-file-id="${fileId}"]`);
+    if (tile) {
+      tile.classList.remove('is-done');
+      const processedSection = tile.querySelector('.tile__processed');
+      if (processedSection) processedSection.classList.add('is-hidden');
+      const savingsEl = tile.querySelector('.tile__savings');
+      if (savingsEl) savingsEl.classList.add('is-hidden');
+      const badges = tile.querySelector('.tile__status-badges');
+      if (badges) badges.innerHTML = '';
+      const downloadBtn = tile.querySelector('.tile__download-btn');
+      if (downloadBtn) {
+        downloadBtn.disabled = true;
+        downloadBtn.title = 'Processing...';
+      }
+    }
+  });
+
+  await runBatch(doneIds);
+}
+
+/**
+ * Shared batch processing loop.
+ * @param {string[]} fileIds
+ */
+async function runBatch(fileIds) {
   processing = true;
-  cancelled = false;
+  abortController = new AbortController();
 
   const batchProgressEl = $('#batch-progress');
   const processedCountEl = $('#processed-count');
   const totalCountEl = $('#total-count');
   const timeRemainingEl = $('#time-remaining');
   const progressBar = $('#batch-progress-bar');
+  const succeededEl = $('#batch-succeeded');
+  const failedEl = $('#batch-failed');
+  const successCountEl = $('#batch-success-count');
+  const failCountEl = $('#batch-fail-count');
 
-  const total = selectedIds.length;
+  const total = fileIds.length;
   let processed = 0;
+  let succeeded = 0;
+  let failed = 0;
   const startTime = Date.now();
 
-  // Show batch progress
+  // Show batch progress, reset stats
   if (batchProgressEl) batchProgressEl.classList.remove('is-hidden');
   if (totalCountEl) totalCountEl.textContent = total;
   if (processedCountEl) processedCountEl.textContent = 0;
+  if (succeededEl) succeededEl.classList.add('is-hidden');
+  if (failedEl) failedEl.classList.add('is-hidden');
+  if (successCountEl) successCountEl.textContent = 0;
+  if (failCountEl) failCountEl.textContent = 0;
 
   globalProgress.show();
 
-  // Process in chunks, delegating each tile to processTile()
-  const queue = [...selectedIds];
+  // Process in chunks
+  const queue = [...fileIds];
+  let aborted = false;
 
-  while (queue.length > 0 && !cancelled) {
+  while (queue.length > 0 && !aborted) {
     const chunk = queue.splice(0, CHUNK_SIZE);
 
     await Promise.all(
       chunk.map(async (fileId) => {
-        const entry = state.files.get(fileId);
-        if (!entry || entry.status === 'done') {
-          processed++;
-          updateBatchProgress(processed, total, startTime, processedCountEl, progressBar, timeRemainingEl);
+        if (abortController.signal.aborted) {
+          aborted = true;
           return;
         }
 
-        try {
-          await processTile(fileId, { skipGlobalProgress: true });
-        } catch (error) {
-          console.error(`Batch processing error for ${fileId}:`, error);
+        const entry = state.files.get(fileId);
+        if (!entry || entry.status === 'done') {
+          succeeded++;
+          processed++;
+          updateBatchProgress(processed, total, startTime, processedCountEl, progressBar, timeRemainingEl);
+          updateBatchStats(succeeded, failed, succeededEl, failedEl, successCountEl, failCountEl);
+          return;
+        }
+
+        await processTile(fileId, {
+          skipGlobalProgress: true,
+          signal: abortController.signal,
+        });
+
+        const updatedEntry = state.files.get(fileId);
+        if (updatedEntry?.status === 'cancelled') {
+          aborted = true;
+          return;
+        } else if (updatedEntry?.status === 'done') {
+          succeeded++;
+        } else if (updatedEntry?.status === 'error') {
+          failed++;
         }
 
         processed++;
         updateBatchProgress(processed, total, startTime, processedCountEl, progressBar, timeRemainingEl);
+        updateBatchStats(succeeded, failed, succeededEl, failedEl, successCountEl, failCountEl);
       })
     );
   }
 
   // Cleanup
   processing = false;
+  abortController = null;
   globalProgress.hide();
   if (batchProgressEl) {
-    setTimeout(() => batchProgressEl.classList.add('is-hidden'), 1000);
+    setTimeout(() => batchProgressEl.classList.add('is-hidden'), 1500);
   }
 
-  if (!cancelled) {
-    showToast({ message: `Processed ${processed} images`, type: 'success' });
+  // Completion summary toast
+  if (aborted) {
+    showToast({
+      message: `Cancelled. ${succeeded} processed, ${total - processed} skipped.`,
+      type: 'info',
+    });
+  } else if (failed === 0) {
+    showToast({
+      message: `All ${succeeded} images processed successfully`,
+      type: 'success',
+    });
+  } else {
+    showToast({
+      message: `${succeeded} processed, ${failed} failed`,
+      type: 'warning',
+    });
   }
 }
 
@@ -164,24 +320,31 @@ function updateBatchProgress(processed, total, startTime, countEl, barEl, timeEl
   }
 }
 
-/**
- * Download all selected processed files (single or ZIP).
- */
-async function downloadSelected() {
-  const selectedIds = [...state.selectedFiles];
-  const processedIds = selectedIds.filter((id) => {
-    const entry = state.files.get(id);
-    return entry?.processedData;
-  });
+function updateBatchStats(succeeded, failed, succeededEl, failedEl, successCountEl, failCountEl) {
+  if (succeeded > 0 && succeededEl) {
+    succeededEl.classList.remove('is-hidden');
+    if (successCountEl) successCountEl.textContent = succeeded;
+  }
+  if (failed > 0 && failedEl) {
+    failedEl.classList.remove('is-hidden');
+    if (failCountEl) failCountEl.textContent = failed;
+  }
+}
 
-  if (processedIds.length === 0) {
+/**
+ * Download all processed files (single or ZIP).
+ */
+async function downloadAll() {
+  const processedEntries = [...state.files.entries()]
+    .filter(([, entry]) => entry.status === 'done' && entry.processedData);
+
+  if (processedEntries.length === 0) {
     showToast({ message: 'No processed images to download', type: 'warning' });
     return;
   }
 
-  if (processedIds.length === 1) {
-    // Single file download via /download endpoint
-    const entry = state.files.get(processedIds[0]);
+  if (processedEntries.length === 1) {
+    const [, entry] = processedEntries[0];
     try {
       const response = await postJSON('/download', {
         compressed_data: entry.processedData.data,
@@ -207,12 +370,9 @@ async function downloadSelected() {
 
     const zip = new JSZip();
 
-    for (const fileId of processedIds) {
-      const entry = state.files.get(fileId);
-      if (entry?.processedData) {
-        const binaryData = base64ToUint8Array(entry.processedData.data);
-        zip.file(entry.processedData.filename, binaryData);
-      }
+    for (const [, entry] of processedEntries) {
+      const binaryData = base64ToUint8Array(entry.processedData.data);
+      zip.file(entry.processedData.filename, binaryData);
     }
 
     const content = await zip.generateAsync({
@@ -222,7 +382,7 @@ async function downloadSelected() {
     });
 
     downloadBlob(content, 'processed_images.zip');
-    showToast({ message: `Downloaded ${processedIds.length} images as ZIP`, type: 'success' });
+    showToast({ message: `Downloaded ${processedEntries.length} images as ZIP`, type: 'success' });
   } catch (error) {
     console.error('ZIP creation error:', error);
     showToast({ message: 'Failed to create ZIP file', type: 'error' });
@@ -230,4 +390,3 @@ async function downloadSelected() {
     globalProgress.hide();
   }
 }
-

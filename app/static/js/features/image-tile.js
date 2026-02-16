@@ -4,10 +4,24 @@
 import { $, createElement, icon, downloadBlob } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import { postForm, postJSON } from '../lib/api.js';
-import { state, updateFile, toggleFileSelection, removeFile } from '../state/app-state.js';
+import { state, updateFile, removeFile } from '../state/app-state.js';
 import { appendSettingsToFormData } from './settings.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
+
+// Wire up event-driven DOM cleanup
+bus.on('files:removed', ({ fileId }) => {
+  const tile = $(`[data-file-id="${fileId}"]`);
+  if (tile) tile.remove();
+});
+
+bus.on('files:cleared', () => {
+  const grid = $('#image-grid');
+  if (grid) {
+    const tiles = grid.querySelectorAll('.tile');
+    tiles.forEach((tile) => tile.remove());
+  }
+});
 
 /**
  * Create and append an image tile for a file.
@@ -49,17 +63,16 @@ export function createImageTile(fileId, file, blobUrl) {
   };
   tempImg.src = blobUrl;
 
-  // Checkbox — set accessible label with filename
-  const checkbox = tile.querySelector('.tile__select');
-  checkbox.setAttribute('aria-label', `Select ${file.name}`);
-  checkbox.addEventListener('change', () => {
-    toggleFileSelection(fileId, checkbox.checked);
-    tile.classList.toggle('is-selected', checkbox.checked);
+  // Remove button
+  const removeBtn = tile.querySelector('.tile__remove-btn');
+  removeBtn.setAttribute('aria-label', `Remove ${file.name}`);
+  removeBtn.addEventListener('click', () => {
+    removeFile(fileId);
   });
 
-  // Process button
-  const processBtn = tile.querySelector('.tile__process-btn');
-  processBtn.addEventListener('click', () => processImage(fileId, tile));
+  // Retry button
+  const retryBtn = tile.querySelector('.tile__retry-btn');
+  retryBtn.addEventListener('click', () => retryProcessing(fileId, tile));
 
   // Download button
   const downloadBtn = tile.querySelector('.tile__download-btn');
@@ -71,31 +84,54 @@ export function createImageTile(fileId, file, blobUrl) {
 /**
  * Process a single image by fileId.
  * Exported so batch.js can delegate per-tile processing here.
- * When called from batch, skipGlobalProgress=true since batch owns the progress bar.
  * @param {string} fileId
- * @param {{ skipGlobalProgress?: boolean }} [options]
+ * @param {{ skipGlobalProgress?: boolean, signal?: AbortSignal }} [options]
  */
-export async function processTile(fileId, { skipGlobalProgress = false } = {}) {
+export async function processTile(fileId, { skipGlobalProgress = false, signal } = {}) {
   const tile = $(`[data-file-id="${fileId}"]`);
   if (!tile) return;
-  return processImage(fileId, tile, skipGlobalProgress);
+  return processImage(fileId, tile, skipGlobalProgress, signal);
+}
+
+/**
+ * Retry processing after an error.
+ */
+function retryProcessing(fileId, tile) {
+  // Clear error state
+  tile.classList.remove('is-error');
+  const errorEl = tile.querySelector('.tile__error');
+  if (errorEl) errorEl.remove();
+
+  // Hide retry
+  const retryBtn = tile.querySelector('.tile__retry-btn');
+  if (retryBtn) retryBtn.classList.add('is-hidden');
+
+  // Reset status and re-process
+  updateFile(fileId, { status: 'pending', errorMessage: null });
+  processImage(fileId, tile);
 }
 
 /**
  * Process a single image (internal, needs tile element).
  */
-async function processImage(fileId, tile, skipGlobalProgress = false) {
+async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
   const entry = state.files.get(fileId);
   if (!entry) return;
 
   const progressEl = tile.querySelector('.tile__progress');
-  const processBtn = tile.querySelector('.tile__process-btn');
+  const retryBtn = tile.querySelector('.tile__retry-btn');
   const downloadBtn = tile.querySelector('.tile__download-btn');
 
   try {
     updateFile(fileId, { status: 'processing' });
     progressEl.classList.remove('is-hidden');
-    processBtn.disabled = true;
+    tile.classList.add('is-processing');
+    retryBtn.classList.add('is-hidden');
+    tile.classList.remove('is-done');
+    // Clear stale state from previous attempt
+    const cancelledBadge = tile.querySelector('.badge--cancelled');
+    if (cancelledBadge) cancelledBadge.remove();
+    tile.querySelectorAll('.tile__warning').forEach((el) => el.remove());
     if (!skipGlobalProgress) {
       globalProgress.show();
       globalProgress.setIndeterminate();
@@ -105,10 +141,10 @@ async function processImage(fileId, tile, skipGlobalProgress = false) {
     formData.append('file', entry.file);
     appendSettingsToFormData(formData);
 
-    const response = await postForm('/process', formData);
+    const response = await postForm('/process', formData, { signal });
     const result = await response.json();
 
-    // Store processed data in state
+    // Store processed data and snapshot of settings used
     updateFile(fileId, {
       status: 'done',
       processedData: {
@@ -116,16 +152,27 @@ async function processImage(fileId, tile, skipGlobalProgress = false) {
         filename: result.filename,
         metadata: result.metadata,
       },
+      processedWithSettings: JSON.parse(JSON.stringify(state.settings)),
     });
 
     // Update tile UI
     downloadBtn.disabled = false;
+    downloadBtn.removeAttribute('title');
+    tile.classList.add('is-done');
     updateTileWithResults(tile, result.metadata);
 
     // Show status badges
     const badges = tile.querySelector('.tile__status-badges');
     badges.innerHTML = '';
     badges.appendChild(createBadge('Compressed', 'success'));
+
+    // Show "Converted" badge if format changed
+    const origFmt = result.metadata.original_format;
+    const outFmt = result.metadata.format;
+    if (origFmt && outFmt && origFmt !== outFmt) {
+      badges.appendChild(createBadge(`\u2192 ${outFmt}`, 'info'));
+    }
+
     const origDims = result.metadata.original_dimensions;
     const finalDims = result.metadata.final_dimensions;
     if (origDims && finalDims &&
@@ -138,14 +185,31 @@ async function processImage(fileId, tile, skipGlobalProgress = false) {
       result.warnings.forEach((w) => showTileWarning(tile, w));
     }
   } catch (error) {
+    // AbortError means cancelled
+    if (error.name === 'AbortError') {
+      updateFile(fileId, { status: 'cancelled' });
+      const badges = tile.querySelector('.tile__status-badges');
+      if (badges) {
+        const existing = badges.querySelector('.badge--cancelled');
+        if (!existing) {
+          badges.appendChild(createBadge('Cancelled', 'cancelled'));
+        }
+      }
+      return;
+    }
+
     console.error('Processing error:', error);
     updateFile(fileId, { status: 'error', errorMessage: error.message });
     tile.classList.add('is-error');
     showTileError(tile, `Processing failed: ${error.message}`);
+
+    // Show retry
+    retryBtn.classList.remove('is-hidden');
+
     showToast({ message: `Failed to process ${entry.file.name}`, type: 'error' });
   } finally {
     progressEl.classList.add('is-hidden');
-    processBtn.disabled = false;
+    tile.classList.remove('is-processing');
     if (!skipGlobalProgress) {
       globalProgress.hide();
     }
@@ -188,12 +252,18 @@ function updateTileWithResults(tile, metadata) {
   tile.querySelector('.tile__final-dimensions').textContent = `${finalW} x ${finalH}`;
   tile.querySelector('.tile__final-format').textContent = metadata.format || 'Unknown';
 
-  // Space saved
+  // Savings overlay
   const savings = Math.round((1 - metadata.compressed_size / metadata.original_size) * 100);
   const savingsEl = tile.querySelector('.tile__savings');
+
   if (savings > 0) {
     savingsEl.classList.remove('is-hidden');
-    savingsEl.querySelector('.tile__savings-text').textContent = `${savings}% space saved`;
+    savingsEl.classList.remove('tile__savings--negative');
+    savingsEl.querySelector('.tile__savings-text').textContent = `${savings}% saved`;
+  } else if (savings < 0) {
+    savingsEl.classList.remove('is-hidden');
+    savingsEl.classList.add('tile__savings--negative');
+    savingsEl.querySelector('.tile__savings-text').textContent = `+${Math.abs(savings)}% larger`;
   }
 }
 
@@ -210,11 +280,8 @@ function showTileError(tile, message) {
   errorEl.appendChild(icon('alert-circle', 14));
   errorEl.appendChild(createElement('span', {}, message));
 
-  // Insert before actions
   const actions = tile.querySelector('.tile__actions');
   tile.insertBefore(errorEl, actions);
-
-  setTimeout(() => errorEl.remove(), 8000);
 }
 
 function showTileWarning(tile, message) {

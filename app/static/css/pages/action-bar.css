@@ -1,5 +1,5 @@
-/* Action bar — batch controls */
-.action-bar {
+/* Workspace toolbar — sticky controls */
+.workspace-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -14,18 +14,19 @@
   z-index: var(--z-sticky);
 }
 
-.action-bar__left {
+.workspace-toolbar__left {
   display: flex;
   align-items: center;
   gap: var(--space-4);
 }
 
-.action-bar__stats {
+.workspace-toolbar__right {
   display: flex;
-  gap: var(--space-4);
+  align-items: center;
+  gap: var(--space-2);
 }
 
-.action-bar__stat {
+.workspace-toolbar__stat {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -34,29 +35,105 @@
   white-space: nowrap;
 }
 
-.action-bar__stat .icon {
+.workspace-toolbar__stat .icon {
   color: var(--color-text-tertiary);
 }
 
-.action-bar__right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+
+/* Retry Failed button — error-themed */
+.workspace-toolbar__retry-btn {
+  color: var(--color-error);
 }
 
-/* Mobile: wrap to two rows */
+.workspace-toolbar__retry-btn:hover:not(:disabled) {
+  background-color: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+/* Re-process button */
+.workspace-toolbar__reprocess-btn {
+  color: var(--color-warning);
+}
+
+.workspace-toolbar__reprocess-btn:hover:not(:disabled) {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+/* Batch progress */
+.batch-progress {
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.batch-progress__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.batch-progress__status {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.batch-progress__stats {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.batch-progress__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.batch-progress__stat--success {
+  color: var(--color-success);
+}
+
+.batch-progress__stat--fail {
+  color: var(--color-error);
+}
+
+.batch-progress__time {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* Mobile: fixed bottom toolbar */
 @media (max-width: 640px) {
-  .action-bar {
+  .workspace-toolbar {
     flex-wrap: wrap;
-    position: static;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-sticky);
+    margin-bottom: 0;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+    padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
   }
 
-  .action-bar__left {
+  .workspace-toolbar__left {
     flex: 1 1 100%;
   }
 
-  .action-bar__right {
+  .workspace-toolbar__right {
     flex: 1 1 100%;
     justify-content: flex-end;
   }
+
 }

@@ -201,6 +201,14 @@
   color: var(--color-text);
 }
 
+/* Fieldset reset */
+.form-fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
 /* Radio group */
 .form-radio-group {
   display: flex;

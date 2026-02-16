@@ -23,11 +23,12 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
-  animation: toast-in var(--transition-slow) ease forwards;
+  cursor: pointer;
+  animation: toast-in 300ms ease forwards;
 }
 
 .toast.is-leaving {
-  animation: toast-out var(--transition-base) ease forwards;
+  animation: toast-out 200ms ease forwards;
 }
 
 .toast__icon {
@@ -61,8 +62,12 @@
   justify-content: center;
   width: 24px;
   height: 24px;
+  padding: 0;
+  background: none;
+  border: none;
   border-radius: var(--radius-sm);
   color: var(--color-text-tertiary);
+  cursor: pointer;
   transition: color var(--transition-fast);
 }
 

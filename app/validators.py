@@ -15,7 +15,7 @@ ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'tiff'}
 ALLOWED_COMPRESSION_MODES = {'lossless', 'web', 'high'}
 ALLOWED_RESIZE_MODES = {'original', 'custom'}
 ALLOWED_THEMES = {'light', 'dark'}
-ALLOWED_OUTPUT_FORMATS = {'auto', 'webp', 'jpeg'}
+ALLOWED_OUTPUT_FORMATS = {'auto', 'webp', 'jpeg', 'png'}
 MIN_QUALITY = 1
 MAX_QUALITY = 100
 
