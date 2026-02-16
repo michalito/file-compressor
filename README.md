@@ -1,498 +1,448 @@
-# Image Compression Application
+# Compressify
 
-A web-based image compression tool that provides efficient, in-memory image processing with multiple compression options and batch processing capabilities.
+A self-hosted, password-protected web application for image compression and resizing. All processing happens in-memory on the server — no files are stored on disk.
 
-## Quick Start with Docker
-
-### Prerequisites
-- Docker Desktop installed ([Download here](https://www.docker.com/products/docker-desktop))
-- Git (to clone the repository)
-
-### Step-by-Step Instructions
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/file-compressor.git
-   cd file-compressor
-   ```
-
-2. **Create environment file:**
-   ```bash
-   cp example.env .env
-   ```
-
-3. **Edit the .env file with your secure values:**
-   ```bash
-   # Open with your preferred editor
-   nano .env
-   # OR
-   vim .env
-   # OR on macOS
-   open -e .env
-   ```
-
-   Set the following variables:
-   ```env
-   SECRET_KEY=your-very-long-random-secret-key-here
-   APP_PASSWORD=your-secure-password-here
-   ```
-
-   **Important:**
-   - Use a strong, unique password for APP_PASSWORD
-   - Generate a random SECRET_KEY (at least 32 characters)
-   - You can generate a secret key with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
-
-4. **Build and start the application:**
-   ```bash
-   docker-compose up --build
-   ```
-
-   This command will:
-   - Build the Docker image
-   - Start the container
-   - Show logs in your terminal
-
-5. **Access the application:**
-   - Open your browser and go to: `http://localhost:8000`
-   - Login with the password you set in the .env file
-
-6. **Stop the application:**
-   - Press `Ctrl+C` in the terminal where docker-compose is running
-   - OR run: `docker-compose down`
-
-### Running in Background (Detached Mode)
-
-To run the application in the background:
-
-```bash
-# Start in background
-docker-compose up -d --build
-
-# View logs
-docker-compose logs -f
-
-# Stop the application
-docker-compose down
-```
-
-### Testing the Application
-
-1. **Login:**
-   - Navigate to `http://localhost:8000`
-   - Enter the password from your .env file
-
-2. **Upload and Compress Images:**
-   - Drag and drop images or click to select
-   - Supported formats: JPG, PNG, WebP, TIFF, HEIC
-   - Maximum file size: 50MB per image
-
-3. **Choose Compression Settings:**
-
-   **Compression Modes:**
-   - **Lossless**: Preserves quality, maintains original format
-   - **Web**: Balanced compression (~200KB target)
-   - **High**: Maximum compression (<100KB target)
-
-   **Additional Options:**
-   - Resize dimensions (maintains aspect ratio)
-   - Output format selection (JPEG or WebP)
-   - Quality adjustment slider
-
-4. **Process Images:**
-   - Click "Process" for individual images
-   - Use "Process All" for batch processing
-   - Monitor progress bars during processing
-
-5. **Download Results:**
-   - Download individual compressed images
-   - Select multiple and download as ZIP archive
-   - View compression statistics (size reduction %)
-
-### Troubleshooting
-
-**Container won't start:**
-```bash
-# Check if port 8000 is already in use
-lsof -i :8000  # macOS/Linux
-# OR
-netstat -ano | findstr :8000  # Windows
-
-# Use a different port by editing docker-compose.yml:
-# Change "8000:8000" to "8080:8000" then access via http://localhost:8080
-```
-
-**Permission denied errors:**
-```bash
-# Rebuild with no cache
-docker-compose build --no-cache
-docker-compose up
-```
-
-**Can't login:**
-- Verify APP_PASSWORD is set in .env file
-- Check logs for errors: `docker-compose logs web`
-- Ensure you're using the correct password
-
-**View container status:**
-```bash
-docker-compose ps
-```
-
-**Reset everything:**
-```bash
-docker-compose down -v
-docker system prune -a
-# Then rebuild from step 4
-```
+Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**
 
 ## Features
 
-- **Multiple Compression Modes**:
-  - Lossless: Preserves image quality while reducing file size (maintains original format)
-  - Web Optimization: Balanced compression for web assets
-    - Optimized JPEG (default for better compatibility)
-    - Optional WebP format for maximum web performance
-    - Target size ~200KB
-  - High Compression: Maximum size reduction for storage/email
-    - Aggressive JPEG compression (default for better compatibility)
-    - Optional WebP format for maximum compression
-    - Target size <100KB
-  
-- **Batch Processing**: Process multiple images simultaneously
-- **In-Memory Processing**: No server-side storage of files
-- **Format Support**:
-  - Input: JPG, PNG, WebP, TIFF, HEIC
-  - Output: 
-    - Lossless: Same as input format (JPG, PNG, WebP, TIFF)
-    - Web/High Compression: JPEG (default) or WebP (optional)
-  - Format Compatibility:
-    - JPEG: Universal compatibility with all image viewers
-    - WebP: Better compression, but limited compatibility with some desktop applications
-- **User Interface Features**:
-  - Drag-and-drop file upload
-  - Image preview
-  - Progress tracking
-  - Dark/Light theme
-  - Responsive design
-  - Batch download as ZIP
-- **Security Features**:
-  - Authentication required
-  - Rate limiting (60 operations/minute, 1000/day)
-  - Secure session management
-  - Protection against brute force attacks
+- **Three compression modes**: Lossless (preserves format and quality), Balanced (web-optimized), Maximum (smallest files)
+- **Output format selection**: Auto, PNG, WebP, or JPEG
+- **Quality slider** (1–100) for fine-grained control in Balanced and Maximum modes
+- **Resize** with preset dimensions (Full HD, HD, Web) or custom width/height
+- **Automatic processing** on upload — no manual "Process" button needed
+- **Batch processing** with 5 concurrent uploads, progress tracking, time estimates, and cancel support
+- **Re-process** when settings change, **retry** for failed files
+- **Download** individual files or batch download as ZIP
+- **Drag-and-drop** and click-to-browse upload with client-side 50 MB validation
+- **Dark/light theme** with system preference detection
+- **Responsive design** with mobile-first layout
 
-## System Requirements
+## Quick Start
 
-- **For Docker deployment:** Docker Desktop (includes everything needed)
-- **For manual installation:** Python 3.11+, pip
-- **Browser:** Modern web browser with JavaScript enabled (Chrome, Firefox, Safari, Edge)
+### Prerequisites
 
-## Advanced Docker Operations
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed
+- Git (to clone the repository)
 
-### Monitoring
-
-Monitor your deployment:
+### Development
 
 ```bash
-# View container status
-docker-compose ps
-
-# View resource usage
-docker stats
-
-# View application logs
-docker-compose logs -f web
-
-# View last 100 lines of logs
-docker-compose logs --tail=100 web
+git clone <repository-url>
+cd file-compressor
+cp example.env .env
 ```
 
-### Updates and Maintenance
+Edit `.env` and set both required variables:
 
-Update your deployment:
+```env
+SECRET_KEY=your-very-long-random-secret-key
+APP_PASSWORD=your-secure-password
+```
+
+Start the development server:
 
 ```bash
-# Pull latest changes
-git pull
-
-# Rebuild and restart with new changes
-docker-compose up -d --build
-
-# Remove old images
-docker image prune -f
+docker-compose up --build
 ```
 
-### Using Different Ports
+Access the app at **http://localhost:5001**. This runs the Flask development server with hot-reload — code changes in `app/` are reflected immediately via volume mounts.
 
-If port 8000 is already in use:
+> **Note:** `docker-compose.yml` is for development only. It runs Flask's dev server on port 5000 inside the container, mapped to host port 5001, with `FLASK_DEBUG=1` enabled.
 
-1. Edit `docker-compose.yml`
-2. Change the ports section from `"8000:8000"` to `"YOUR_PORT:8000"`
-3. Example for port 3000: `"3000:8000"`
-4. Access the app at `http://localhost:3000`
+### Production
 
-### Environment Variables
-
-Required environment variables in `.env`:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `SECRET_KEY` | Flask secret key for sessions | `your-32-character-random-string` |
-| `APP_PASSWORD` | Password to access the application | `YourSecurePassword123!` |
-| `FLASK_ENV` | Environment mode (optional) | `production` or `development` |
-
-### Docker Commands Reference
+Build and run the production image directly:
 
 ```bash
-# Build image only
-docker-compose build
+docker build -t compressify:prod .
 
-# Start without rebuilding
-docker-compose up -d
-
-# Stop and remove containers
-docker-compose down
-
-# Stop, remove containers AND volumes
-docker-compose down -v
-
-# View real-time logs
-docker-compose logs -f
-
-# Restart a service
-docker-compose restart web
-
-# Execute command in running container
-docker-compose exec web /bin/bash
-
-# Remove all stopped containers and unused images
-docker system prune -a
+docker run -d --name compressify -p 8000:8000 \
+  -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))") \
+  -e APP_PASSWORD=your-secure-password \
+  compressify:prod
 ```
 
-## Manual Installation (Alternative)
+Or use the production Compose file:
+
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+Access the app at **http://localhost:8000**. This runs Gunicorn with 2 workers, 2 threads, and a 120-second timeout.
+
+To stop:
+
+```bash
+# Direct Docker
+docker stop compressify && docker rm compressify
+
+# Docker Compose
+docker-compose -f docker-compose.prod.yml down
+```
 
 <details>
-<summary>Click to expand manual installation instructions</summary>
+<summary><h2 style="display:inline">Local Development (Without Docker)</h2></summary>
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd file-compressor
-   ```
+```bash
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or: .\venv\Scripts\activate  # Windows
 
-2. Create and activate a virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   # or
-   .\venv\Scripts\activate  # Windows
-   ```
+pip install -r requirements.txt
+cp example.env .env
+# Edit .env with SECRET_KEY and APP_PASSWORD
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+python run.py
+```
 
-4. Set up environment variables:
-   ```bash
-   cp example.env .env
-   # Edit .env file with your configuration
-   ```
-
-5. Run the application:
-   ```bash
-   python run.py
-   ```
-
-The application will be available at `http://localhost:5000`
-
-**Note:** Manual installation requires handling Python dependencies and potential system-specific issues. Docker is recommended for consistent deployment.
+Access at **http://localhost:5000**. Enable debug mode by setting `FLASK_DEBUG=1` in your environment or `.env` file.
 
 </details>
 
-## Production Deployment
-
-For production deployment, the application uses Gunicorn as the WSGI server with the following configuration:
-
-- 4 worker processes
-- 2 threads per worker
-- 120 second timeout
-- Maximum file size: 16MB (configurable)
+## Configuration
 
 ### Environment Variables
 
-- `FLASK_ENV`: Set to `production` for production environment
-- `SECRET_KEY`: Required for session management (must be changed from default)
-- `APP_PASSWORD`: Required for authentication (must be set to a secure password)
-- `MAX_CONTENT_LENGTH`: Maximum allowed file size in bytes (default: 16MB)
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SECRET_KEY` | Yes (production) | `dev-key-please-change` | Flask session encryption key. **Must be changed in production** — the app raises an error if the default is used. Generate one with: `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `APP_PASSWORD` | Yes | None | Login password. Hashed with Werkzeug bcrypt at startup. |
+| `FLASK_ENV` | No | `development` | Set to `production` for production mode. Controls logging level, cookie security, and SECRET_KEY validation. |
+| `FLASK_DEBUG` | No | `0` | Set to `1` for debug mode with auto-reload (development only). |
+| `PROXY_FIX` | No | `false` | Set to `true` when running behind a reverse proxy (Nginx, Caddy, etc.). Enables Werkzeug's ProxyFix middleware for correct `X-Forwarded-*` header handling. |
 
-### Security Features
+### Application Limits
 
-The application includes comprehensive security measures:
+| Setting | Value |
+|---------|-------|
+| Max file size | 50 MB per file |
+| Max dimension | 10,000 px per side |
+| Large image warning | 40 million total pixels |
+| Session lifetime | 30 minutes |
+| CSRF token expiry | 1 hour |
+| Quality range | 1–100 |
+| Max filename length | 255 characters |
 
-1. **Authentication & Authorization**
-   - Password-based authentication (no default passwords)
-   - Secure session management
-   - Rate limiting: 60 operations/minute, 1000/day
-   - Brute force protection: 5-minute lockout after 5 failed attempts
+### Rate Limits
 
-2. **Data Protection**
-   - CSRF protection on all forms and AJAX requests
-   - Secure cookies in production (HTTPOnly, Secure, SameSite)
-   - Input validation and sanitization
-   - No server-side file storage (all in-memory processing)
+Per-IP, no daily limits:
 
-3. **Production Security Checklist**
-   - ✅ Set strong `SECRET_KEY` (32+ characters)
-   - ✅ Use secure `APP_PASSWORD`
-   - ✅ Enable HTTPS with reverse proxy
-   - ✅ Set `FLASK_ENV=production`
-   - ✅ Configure firewall rules
-   - ✅ Regular security updates
+| Endpoint | Limit |
+|----------|-------|
+| `/login` | 10 requests/minute |
+| `/process` | 30 requests/minute |
+| `/download` | 120 requests/minute |
 
-### Example Nginx Configuration
+### Brute Force Protection
+
+5 failed login attempts triggers a 5-minute IP lockout. Lockout countdown is displayed on the login page.
+
+## Usage
+
+### 1. Login
+
+Navigate to the app URL and enter the password configured via `APP_PASSWORD`. Your session lasts 30 minutes. After 5 failed attempts, your IP is locked out for 5 minutes.
+
+### 2. Upload Images
+
+- **Drag and drop** files onto the workspace, or click **Choose Images** to browse
+- Supported formats: JPG, PNG, WebP, TIFF
+- Maximum file size: 50 MB per image (validated client-side before upload)
+- Unsupported or oversized files are rejected with a toast notification
+- You can add more files at any time using the **Add More** button or by dropping onto the workspace
+
+### 3. Configure Settings
+
+The inline settings panel offers these controls:
+
+**Compression mode** (segmented control):
+| Mode | Description | JPEG Quality | WebP Quality |
+|------|-------------|:------------:|:------------:|
+| **Lossless** | Preserves original format and maximum quality | 95 | Lossless (effort 80) |
+| **Balanced** | Good quality, smaller files — strips EXIF metadata | 85 | 75 |
+| **Maximum** | Smallest files, noticeable quality loss — strips EXIF metadata | 60 | 40 |
+
+**Output format** (segmented control):
+- **Auto** — preserves original format in Lossless; uses JPEG in Balanced/Maximum
+- **PNG** — lossless output, quality slider hidden
+- **WebP** — best compression ratio, preserves transparency
+- **JPEG** — universal compatibility, no transparency (transparent areas become white)
+
+**Quality slider** (1–100): Available for Balanced and Maximum modes when output is not PNG. Default resets when changing mode or format.
+
+**Resize**: Original (no resize) or Custom with width/height inputs. Presets available: Full HD (1920x1080), HD (1280x720), Web (800x600). Aspect ratio is maintained.
+
+Settings persist in your browser across sessions via localStorage.
+
+### 4. Automatic Processing
+
+Images are **processed automatically** when uploaded — there is no manual "Process" button. Batch processing handles up to 5 images concurrently. A progress bar shows completion with a time estimate.
+
+**Toolbar actions** (appear after uploading files):
+- **Re-process** — appears when you change settings after processing; re-runs all files with new settings
+- **Retry Failed** — re-processes only images that encountered errors
+- **Cancel** — stops the current batch (already-processed images are kept)
+- **Clear All** — removes all files and returns to the empty state
+
+### 5. Download
+
+- **Per-image**: click the download button on any processed tile
+- **Download All**: downloads a single file directly, or creates a ZIP archive when multiple files are processed
+- Compression statistics (size reduction %) are shown as an overlay on each tile
+
+## Compression Modes Reference
+
+| | Lossless | Balanced | Maximum |
+|---|---|---|---|
+| **JPEG quality** | 95 | 85 | 60 (retries at 30) |
+| **WebP quality** | Lossless (effort 80) | 75 (method 4) | 40 (method 6) |
+| **PNG** | optimize, compress level 9 | optimize, compress level 9 | optimize, compress level 9 |
+| **TIFF** | Adobe Deflate | N/A | N/A |
+| **EXIF metadata** | Preserved | Stripped | Stripped |
+| **ICC profile** | Preserved | Stripped (sRGB conversion) | Stripped (sRGB conversion) |
+| **Color mode** | Preserved | Normalized to RGB/sRGB | Normalized to RGB/sRGB |
+
+Additional behaviors:
+- **Maximum mode retry**: if compression ratio exceeds 50%, retries at quality 30 for more aggressive compression
+- **Transparency**: JPEG composites transparent areas onto a white background; WebP and PNG preserve alpha channels
+- **CMYK/Palette images**: automatically converted to RGB before processing
+- **EXIF orientation**: physically applied (rotated) before processing in all modes
+- **Progressive JPEG**: enabled in all modes for faster web rendering
+
+## Production Deployment
+
+### Docker Image
+
+The Dockerfile uses a multi-stage build:
+
+1. **Builder stage** — installs Python dependencies into an isolated virtual environment
+2. **Runtime stage** — copies only the venv and application code, runs as non-root user `appuser`
+
+**Gunicorn configuration** (from Dockerfile CMD):
+- 2 worker processes, 2 threads per worker
+- 120-second request timeout
+- 5-second keep-alive
+- Sync worker class with application preload
+- Access and error logs written to stdout/stderr
+
+### Docker Entrypoint
+
+`docker-entrypoint.sh` runs before the application starts:
+
+1. Validates that `SECRET_KEY` and `APP_PASSWORD` are set (exits with an error if either is missing)
+2. Creates a secured `.env` file at `/app/instance/secrets/.env` with `chmod 600`
+3. Symlinks `/app/.env` to the secured copy
+4. Logs the length (not the value) of each variable for verification
+
+### Reverse Proxy with Nginx
 
 ```nginx
 server {
     listen 80;
     server_name your-domain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+
+    ssl_certificate     /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    client_max_body_size 50M;
 
     location / {
-        proxy_pass http://localhost:8000;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        client_max_body_size 16M;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
     }
 }
 ```
 
-## Usage
+**Important**: Set `PROXY_FIX=true` in your environment when running behind a reverse proxy. This enables Werkzeug's ProxyFix middleware so Flask correctly reads `X-Forwarded-*` headers for rate limiting and secure cookie handling.
 
-1. **Authentication**:
-   - Login with your configured password
-   - Session remains active for configured duration
-   - Rate limits apply to authenticated sessions
+### Monitoring
 
-2. **Upload Images**:
-   - Drag and drop images onto the upload area
-   - Click the upload area to select files
-   - Supported formats: JPG, PNG, WebP, TIFF, HEIC
+```bash
+# Container status
+docker-compose -f docker-compose.prod.yml ps
 
-3. **Configure Compression**:
-   - Select compression mode:
-     - Lossless: For preserving quality (keeps original format)
-     - Web: For balanced compression (JPEG/WebP)
-     - High: For maximum size reduction (JPEG/WebP)
-   - Choose output format:
-     - JPEG: Best compatibility with all devices and applications
-     - WebP: Better compression for web use (optional)
-   - Adjust quality settings if needed
-   - Set maximum dimensions (optional)
+# Resource usage
+docker stats
 
-4. **Format Considerations**:
-   - JPEG output (default):
-     - Works with all image viewers and applications
-     - Good compression ratio
-     - Suitable for photographs and complex images
-   - WebP output (optional):
-     - Better compression ratios
-     - Excellent for web delivery
-     - Limited compatibility with some desktop applications
-     - Best used when targeting web deployment
+# Application logs
+docker-compose -f docker-compose.prod.yml logs -f web
 
-5. *Process Images**:
-   - Click "Process" for individual images
-   - Use "Process Selected" for batch processing
-   - Monitor progress through the progress bars
-   - Note: Rate limits apply (60/minute, 1000/day)
+# Last 100 lines of logs
+docker-compose -f docker-compose.prod.yml logs --tail=100 web
+```
 
-6. Download Results**:
-   - Download individual images
-   - Use "Download Selected" for multiple files (creates ZIP)
-   - Check compression statistics in the interface
+### Updates
 
-## Memory Management
+```bash
+git pull
+docker-compose -f docker-compose.prod.yml up -d --build
+docker image prune -f  # Remove old images
+```
 
-The application is designed to process files entirely in memory:
+## Security
 
-- Maximum file size limit: 50MB (configurable)
-- Batch processing uses a queue system
-- Memory is released after each file is processed
-- No temporary files are stored on disk
+### Authentication
+- Password-based login with Werkzeug bcrypt hashing
+- No default password — `APP_PASSWORD` is required in all environments
+
+### Session Management
+- 30-minute session lifetime with `session.permanent = True`
+- Secure cookies in production: `HttpOnly`, `Secure`, `SameSite=Lax`
+
+### CSRF Protection
+- Flask-WTF CSRF tokens on all forms and state-changing endpoints
+- 1-hour token expiry
+
+### Rate Limiting
+- Flask-Limiter with per-IP tracking (see [Rate Limits](#rate-limits) for per-endpoint values)
+
+### Brute Force Protection
+- 5 failed login attempts triggers a 5-minute IP lockout
+- Thread-safe tracking with `threading.Lock`
+
+### Input Validation
+- Filename sanitization and path traversal prevention
+- File extension whitelist (JPG, JPEG, PNG, WebP, TIFF only)
+- Dimension bounds (1–10,000 px per side)
+- Quality bounds (1–100)
+- Base64 format validation on download requests
+
+### Data Handling
+- All processing in-memory using `io.BytesIO` — no temporary files on disk
+- EXIF metadata stripped in Balanced and Maximum modes for privacy
+
+### Production Hardening
+- `SECRET_KEY` validated on startup (rejects default value in production)
+- Non-root container user (`appuser`)
+- Secrets directory secured with `chmod 700`, `.env` file with `chmod 600`
+
+**Production checklist:**
+- [ ] Set a strong `SECRET_KEY` (32+ characters)
+- [ ] Set a secure `APP_PASSWORD`
+- [ ] Use HTTPS via reverse proxy
+- [ ] Set `FLASK_ENV=production`
+- [ ] Set `PROXY_FIX=true` if behind a reverse proxy
+- [ ] Configure firewall rules
+
+## Project Structure
+
+```
+file-compressor/
+  app/
+    __init__.py                  # App factory, config, rate limits
+    auth.py                      # Authentication, brute-force protection
+    forms.py                     # Flask-WTF login form
+    routes.py                    # /login, /process, /download, /theme
+    validators.py                # Input validation and sanitization
+    compression/
+      image_processor.py         # ImageCompressor: lossless, balanced, maximum
+    static/
+      css/
+        tokens.css               # Design tokens (CSS custom properties)
+        components/              # Button, card, form, modal, toast, etc.
+        pages/                   # Login, upload, image-tile, settings, etc.
+      js/
+        main.js                  # Entry point (ES module)
+        lib/                     # api.js, dom.js, events.js, storage.js
+        state/app-state.js       # Reactive state store, settings persistence
+        components/              # theme.js, toast.js, modal.js, progress.js
+        features/                # upload.js, settings.js, image-tile.js, batch.js
+    templates/
+      base.html                  # Layout, SVG sprite, header/footer
+      login.html                 # Authentication page
+      index.html                 # Workspace with settings panel and image grid
+      image_tile_template.html   # Individual image tile template
+  docker-compose.yml             # Development (Flask dev server, port 5001)
+  docker-compose.prod.yml        # Production (Gunicorn, port 8000)
+  Dockerfile                     # Multi-stage production build
+  docker-entrypoint.sh           # Env validation and secrets setup
+  run.py                         # WSGI entry point
+  requirements.txt               # Python dependencies
+  example.env                    # Environment variable template
+```
 
 ## Browser Compatibility
 
-- Chrome 80+
-- Firefox 75+
-- Safari 13+
-- Edge 80+
+Requires a modern browser with ES module and `crypto.randomUUID()` support:
 
-## Development
-
-### Project Structure
-
-```
-image-compressor/
-├── app/
-│   ├── compression/
-│   │   ├── __init__.py
-│   │   └── image_processor.py
-│   ├── static/
-│   │   ├── css/
-│   │   └── js/
-│   ├── templates/
-│   │   └── *.html
-│   ├── __init__.py
-│   └── routes.py
-├── tests/
-├── Dockerfile
-├── requirements.txt
-└── run.py
-```
-
-### Running Tests
-
-```bash
-pytest tests/
-```
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
+| Browser | Minimum Version |
+|---------|-----------------|
+| Chrome  | 92+ |
+| Edge    | 92+ |
+| Firefox | 95+ |
+| Safari  | 15.4+ |
 
 ## Troubleshooting
 
-### Common Issues
+### Container won't start
 
-1. **File Upload Failures**:
-   - Check file size limits
-   - Verify file format support
-   - Check browser console for errors
+- **Missing environment variables**: The entrypoint script prints `ERROR: SECRET_KEY environment variable is not set` (or `APP_PASSWORD`) if either is missing. Check your `.env` file.
+- **Port already in use**: Check with `lsof -i :8000` (production) or `lsof -i :5001` (development). To use a different port, edit the port mapping in the relevant `docker-compose` file (e.g., change `"8000:8000"` to `"3000:8000"`).
 
-2. **Memory Issues**:
-   - Reduce batch size
-   - Check system memory availability
-   - Monitor server logs
+### Can't login
 
-3. **Download Problems**:
-   - Check browser download settings
-   - Verify file permissions
-   - Check network connectivity
+- Verify `APP_PASSWORD` is set correctly in your `.env` file
+- Check application logs: `docker-compose logs web`
+- After 5 failed attempts, wait 5 minutes for the lockout to expire
+
+### File upload rejected
+
+- Supported formats: JPG, PNG, WebP, TIFF only (not HEIC, GIF, or BMP)
+- Maximum size: 50 MB per file
+- Maximum dimensions: 10,000 px per side
+
+### Large images processing slowly
+
+- Images exceeding 40 million total pixels (e.g., 8000x5000) trigger a warning
+- Consider using the resize presets (Full HD, HD, Web) to reduce dimensions before compression
 
 ### Logging
 
-- Application logs are available in the standard output
-- Use environment variable `FLASK_DEBUG=1` for debug logging
-- Production logs are handled by Gunicorn
+- **Production**: INFO level, handled by Gunicorn (stdout/stderr)
+- **Development**: DEBUG level when `FLASK_DEBUG=1` is set
+- **Docker**: `docker-compose logs -f web` or `docker-compose -f docker-compose.prod.yml logs -f web`
+
+### Reset everything
+
+```bash
+docker-compose down -v          # Development
+# or
+docker-compose -f docker-compose.prod.yml down -v  # Production
+
+docker system prune -a          # Remove all unused images
+# Then rebuild from the Quick Start steps
+```
+
+## Known Issues
+
+- Maximum compression mode produces WebP files that may only open in web browsers, not all desktop image viewers
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Backend | Flask 3.1, Gunicorn 23, Python 3.11 |
+| Image Processing | Pillow 11.1 |
+| Auth & Security | Flask-WTF 1.2, Flask-Limiter 3.10, Werkzeug bcrypt |
+| Frontend | Vanilla ES modules, CSS custom properties |
+| Batch Download | JSZip (loaded from CDN) |
+| Container | Docker multi-stage build, non-root user |
 
 ## License
 
-[Add your license information here]
+[Add license information]
 
 ## Support
 
-[Add support contact information here]
+[Add support contact information]
