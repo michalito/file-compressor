@@ -3,9 +3,11 @@
  * ES module, page-context routing.
  */
 import { initTheme } from './components/theme.js';
+import { initFooter } from './components/footer.js';
 
-// Initialize theme on every page
+// Initialize on every page
 initTheme();
+initFooter();
 
 // Page-context routing
 const appLayout = document.querySelector('.app-layout');

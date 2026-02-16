@@ -93,6 +93,7 @@
 
   /* Layout */
   --header-height: 56px;
+  --footer-height: 40px;
 }
 
 [data-theme="dark"] {

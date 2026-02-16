@@ -119,6 +119,10 @@ class ImageCompressor:
             # Try to open the image to validate format
             img = Image.open(io.BytesIO(image_data))
 
+            # MPO (Multi-Picture Object) is JPEG with extra frames (common in smartphone photos)
+            if img.format == 'MPO':
+                img.format = 'JPEG'
+
             # Check format
             if img.format not in ['JPEG', 'PNG', 'WEBP', 'TIFF']:
                 errors.append(f"Unsupported image format: {img.format}")

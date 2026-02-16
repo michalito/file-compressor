@@ -41,6 +41,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/progress.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/toast.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/badge.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/footer.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/utilities.css') }}">
     {% block styles %}{% endblock %}
 </head>
@@ -211,6 +212,20 @@
     <main id="main-content" tabindex="-1">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- Footer -->
+    <footer class="footer" id="app-footer">
+        <div class="footer__inner">
+            <span class="footer__brand">Compressify</span>
+            <span class="footer__separator" aria-hidden="true">&middot;</span>
+            <span class="footer__hint" id="footer-hint">{% if session.get('authenticated') %}Drop files anywhere to compress{% else %}Fast, private image compression{% endif %}</span>
+            <span class="footer__separator" aria-hidden="true">&middot;</span>
+            <span class="footer__formats">JPG · PNG · WebP · TIFF</span>
+        </div>
+        <button type="button" class="footer__scroll-top is-hidden" id="scroll-top-btn" aria-label="Scroll to top">
+            <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
+        </button>
+    </footer>
 
     <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}

@@ -1,3 +1,17 @@
+/* App shell: fixed header + footer, content scrolls between */
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+main {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 /* Header */
 .header {
   position: sticky;
@@ -35,15 +49,18 @@
   gap: var(--space-2);
 }
 
-/* App layout — single column */
+/* App layout — single column, fills main */
 .app-layout {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - var(--header-height));
+  min-height: 100%;
 }
 
-/* Workspace (full width) */
+/* Workspace (full width, fills main) */
 .workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   padding: var(--space-6);
   min-width: 0;
   max-width: 1200px;
@@ -51,13 +68,14 @@
   margin: 0 auto;
 }
 
-/* Empty state — hero drop zone */
+/* Empty state — hero drop zone, centered in available space */
 .workspace__empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - var(--header-height) - var(--space-12));
+  margin-top: auto;
+  margin-bottom: auto;
   color: var(--color-text-tertiary);
   text-align: center;
   gap: var(--space-4);
