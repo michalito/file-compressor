@@ -180,6 +180,10 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
       badges.appendChild(createBadge('Resized', 'info'));
     }
 
+    if (result.metadata.watermarked) {
+      badges.appendChild(createBadge('Watermarked', 'info'));
+    }
+
     // Show warnings
     if (result.warnings && result.warnings.length > 0) {
       result.warnings.forEach((w) => showTileWarning(tile, w));

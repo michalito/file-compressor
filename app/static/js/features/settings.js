@@ -56,6 +56,20 @@ const tools = {
       }
     },
   },
+  watermark: {
+    toFormData(settings, formData) {
+      if (settings.enabled && settings.text.trim()) {
+        formData.append('watermark_text', settings.text.trim());
+        formData.append('watermark_position', settings.position);
+        formData.append('watermark_opacity', settings.opacity);
+        formData.append('watermark_color', settings.color);
+        formData.append('watermark_size', settings.size);
+        if (settings.position === 'tiled') {
+          formData.append('watermark_tile_density', settings.tileDensity);
+        }
+      }
+    },
+  },
 };
 
 /* ── Initialization ───────────────────────────────────────────────── */
@@ -71,6 +85,7 @@ export function initSettings() {
   initResizeMode();
   initPresets();
   initAspectRatio();
+  initWatermark();
   initPanelPositioning();
 
   // Apply persisted state to controls
@@ -250,6 +265,82 @@ function initAspectRatio() {
   heightInput.addEventListener('change', commitDimensions);
 }
 
+/* ── Watermark ────────────────────────────────────────────────────── */
+
+function initWatermark() {
+  const toggle = $('#watermark-toggle');
+  const body = $('#watermark-body');
+  const textInput = $('#watermark-text');
+  if (!toggle || !body) return;
+
+  // Toggle
+  toggle.addEventListener('change', () => {
+    const enabled = toggle.checked;
+    body.classList.toggle('is-hidden', !enabled);
+    updateSettings('watermark', { enabled });
+  });
+
+  // Text input — commit on change (blur / Enter)
+  if (textInput) {
+    textInput.addEventListener('change', () => {
+      updateSettings('watermark', { text: textInput.value });
+    });
+  }
+
+  // Position segmented control
+  const posControl = $('#watermark-position-control');
+  if (posControl) {
+    initSegmentedControl(posControl, (value) => {
+      updateSettings('watermark', { position: value });
+      toggleHidden('#watermark-density-group', value !== 'tiled');
+    });
+  }
+
+  // Color segmented control
+  const colorControl = $('#watermark-color-control');
+  if (colorControl) {
+    initSegmentedControl(colorControl, (value) => {
+      updateSettings('watermark', { color: value });
+    });
+  }
+
+  // Opacity slider
+  const opacitySlider = $('#watermark-opacity-slider');
+  const opacityValue = $('#watermark-opacity-value');
+  if (opacitySlider) {
+    opacitySlider.addEventListener('input', () => {
+      if (opacityValue) opacityValue.textContent = `${opacitySlider.value}%`;
+    });
+    opacitySlider.addEventListener('change', () => {
+      updateSettings('watermark', { opacity: parseInt(opacitySlider.value, 10) });
+    });
+  }
+
+  // Size slider
+  const sizeSlider = $('#watermark-size-slider');
+  const sizeValue = $('#watermark-size-value');
+  if (sizeSlider) {
+    sizeSlider.addEventListener('input', () => {
+      if (sizeValue) sizeValue.textContent = sizeSlider.value;
+    });
+    sizeSlider.addEventListener('change', () => {
+      updateSettings('watermark', { size: parseInt(sizeSlider.value, 10) });
+    });
+  }
+
+  // Tile density slider
+  const densitySlider = $('#watermark-density-slider');
+  const densityValue = $('#watermark-density-value');
+  if (densitySlider) {
+    densitySlider.addEventListener('input', () => {
+      if (densityValue) densityValue.textContent = densitySlider.value;
+    });
+    densitySlider.addEventListener('change', () => {
+      updateSettings('watermark', { tileDensity: parseInt(densitySlider.value, 10) });
+    });
+  }
+}
+
 /* ── Panel positioning ────────────────────────────────────────────── */
 
 function initPanelPositioning() {
@@ -298,7 +389,7 @@ function positionPanel(hasFiles) {
 /* ── Sync controls from persisted state ───────────────────────────── */
 
 function syncControlsFromState() {
-  const { compress, resize } = state.settings;
+  const { compress, resize, watermark } = state.settings;
 
   // Compression mode
   setSegmentedValue('#compression-mode-control', compress.mode);
@@ -330,6 +421,32 @@ function syncControlsFromState() {
     if (h) h.value = resize.height;
   }
 
+  // Watermark
+  const wmToggle = $('#watermark-toggle');
+  const wmBody = $('#watermark-body');
+  const wmText = $('#watermark-text');
+  if (wmToggle) wmToggle.checked = watermark.enabled;
+  if (wmBody) wmBody.classList.toggle('is-hidden', !watermark.enabled);
+  if (wmText) wmText.value = watermark.text || '';
+  setSegmentedValue('#watermark-position-control', watermark.position);
+  setSegmentedValue('#watermark-color-control', watermark.color);
+
+  const opacitySlider = $('#watermark-opacity-slider');
+  const opacityValue = $('#watermark-opacity-value');
+  if (opacitySlider) opacitySlider.value = watermark.opacity;
+  if (opacityValue) opacityValue.textContent = `${watermark.opacity}%`;
+
+  const sizeSlider = $('#watermark-size-slider');
+  const sizeValue = $('#watermark-size-value');
+  if (sizeSlider) sizeSlider.value = watermark.size;
+  if (sizeValue) sizeValue.textContent = watermark.size;
+
+  const densitySlider = $('#watermark-density-slider');
+  const densityValue = $('#watermark-density-value');
+  if (densitySlider) densitySlider.value = watermark.tileDensity;
+  if (densityValue) densityValue.textContent = watermark.tileDensity;
+  toggleHidden('#watermark-density-group', watermark.position !== 'tiled');
+
   updateSummary();
 }
 
@@ -339,7 +456,7 @@ function updateSummary() {
   const el = $('#settings-summary');
   if (!el) return;
 
-  const { compress, resize } = state.settings;
+  const { compress, resize, watermark } = state.settings;
   const parts = [];
 
   // Compression
@@ -360,6 +477,11 @@ function updateSummary() {
     parts.push(`${resize.width}\u00d7${resize.height}`);
   } else {
     parts.push('Original size');
+  }
+
+  // Watermark
+  if (watermark.enabled && watermark.text.trim()) {
+    parts.push('Watermark');
   }
 
   el.textContent = parts.join(' \u00b7 ');

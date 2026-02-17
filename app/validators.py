@@ -18,6 +18,9 @@ ALLOWED_THEMES = {'light', 'dark'}
 ALLOWED_OUTPUT_FORMATS = {'auto', 'webp', 'jpeg', 'png'}
 MIN_QUALITY = 1
 MAX_QUALITY = 100
+MAX_WATERMARK_LENGTH = 50
+ALLOWED_WATERMARK_POSITIONS = {'bottom-right', 'bottom-left', 'top-right', 'top-left', 'center', 'tiled'}
+ALLOWED_WATERMARK_COLORS = {'white', 'black', 'auto'}
 
 
 def validate_file(file: FileStorage) -> Tuple[bool, Optional[str]]:
@@ -201,6 +204,52 @@ def validate_download_data(compressed_data: str, filename: str) -> Tuple[bool, O
 
     if '..' in filename or '/' in filename or '\\' in filename:
         return False, "Invalid filename"
+
+    return True, None
+
+
+def validate_watermark_text(text: Optional[str]) -> Tuple[bool, Optional[str]]:
+    """
+    Validate watermark text. None/empty means no watermark.
+    """
+    if not text:
+        return True, None
+
+    if len(text) > MAX_WATERMARK_LENGTH:
+        return False, f"Watermark text too long (max {MAX_WATERMARK_LENGTH} characters)"
+
+    if not all(c.isprintable() for c in text):
+        return False, "Watermark text must contain only printable characters"
+
+    return True, None
+
+
+def validate_watermark_position(position: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate watermark position.
+    """
+    if position not in ALLOWED_WATERMARK_POSITIONS:
+        return False, f"Invalid watermark position. Allowed: {', '.join(sorted(ALLOWED_WATERMARK_POSITIONS))}"
+
+    return True, None
+
+
+def validate_watermark_options(opacity: int, size: int, color: str,
+                               tile_density: int = 5) -> Tuple[bool, Optional[str]]:
+    """
+    Validate watermark opacity, size, color, and tile density.
+    """
+    if not isinstance(opacity, int) or opacity < 10 or opacity > 100:
+        return False, "Watermark opacity must be between 10 and 100"
+
+    if not isinstance(size, int) or size < 1 or size > 20:
+        return False, "Watermark size must be between 1 and 20"
+
+    if color not in ALLOWED_WATERMARK_COLORS:
+        return False, f"Invalid watermark color. Allowed: {', '.join(sorted(ALLOWED_WATERMARK_COLORS))}"
+
+    if not isinstance(tile_density, int) or tile_density < 1 or tile_density > 10:
+        return False, "Watermark tile density must be between 1 and 10"
 
     return True, None
 

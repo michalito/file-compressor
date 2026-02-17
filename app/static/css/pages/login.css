@@ -1,9 +1,9 @@
-/* Login page */
+/* Login page — fills the space between header and footer, no scroll */
 .login {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - var(--header-height) - var(--footer-height));
+  min-height: 100%;
   padding: var(--space-4);
 }
 
@@ -18,15 +18,15 @@
 }
 
 .login__header {
-  padding: var(--space-8) var(--space-8) var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-3);
   text-align: center;
 }
 
-.login__icon {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto var(--space-4);
-  color: var(--color-primary);
+.login__logo {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--space-3);
+  object-fit: contain;
 }
 
 .login__title {
@@ -38,7 +38,7 @@
 .login__tagline {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .login__subtitle {
@@ -48,13 +48,13 @@
 }
 
 .login__body {
-  padding: var(--space-4) var(--space-8) var(--space-8);
+  padding: var(--space-3) var(--space-6) var(--space-6);
 }
 
 .login__form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 
 .login__error {
@@ -62,7 +62,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
   font-size: var(--text-sm);
   color: var(--color-error);
   background-color: var(--color-error-subtle);
@@ -77,4 +77,25 @@
 .login__error--rate-limit {
   color: var(--color-warning);
   background-color: var(--color-warning-subtle);
+}
+
+/* Small screens — tighten spacing to prevent overflow */
+@media (max-height: 500px) {
+  .login__header {
+    padding: var(--space-4) var(--space-6) var(--space-2);
+  }
+
+  .login__logo {
+    width: 40px;
+    height: 40px;
+    margin-bottom: var(--space-2);
+  }
+
+  .login__body {
+    padding: var(--space-2) var(--space-6) var(--space-4);
+  }
+
+  .login__form {
+    gap: var(--space-3);
+  }
 }

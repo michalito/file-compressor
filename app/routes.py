@@ -8,7 +8,8 @@ from .auth import RateLimitExceeded
 from .validators import (
     validate_file, validate_compression_mode, validate_resize_mode,
     validate_dimensions, validate_quality, validate_output_format,
-    validate_theme, validate_download_data, sanitize_filename
+    validate_theme, validate_download_data, sanitize_filename,
+    validate_watermark_text, validate_watermark_position, validate_watermark_options
 )
 from .forms import LoginForm
 
@@ -78,7 +79,10 @@ def index():
     return render_template('index.html')
 
 
-def _process_image_file(file, compression_mode, resize_mode, max_width, max_height, quality, output_format):
+def _process_image_file(file, compression_mode, resize_mode, max_width, max_height, quality, output_format,
+                        watermark_text=None, watermark_position='bottom-right',
+                        watermark_opacity=50, watermark_color='white', watermark_size=5,
+                        watermark_tile_density=5):
     """Validate, compress, encode, and build response for a single image file.
 
     Returns (response_dict, status_code) tuple.
@@ -103,7 +107,13 @@ def _process_image_file(file, compression_mode, resize_mode, max_width, max_heig
         max_height if resize_mode == 'custom' else None,
         quality,
         output_format=output_format,
-        preloaded_image=validation.image
+        preloaded_image=validation.image,
+        watermark_text=watermark_text,
+        watermark_position=watermark_position,
+        watermark_opacity=watermark_opacity,
+        watermark_color=watermark_color,
+        watermark_size=watermark_size,
+        watermark_tile_density=watermark_tile_density,
     )
 
     # Encode as base64
@@ -176,10 +186,38 @@ def process_image():
     if not is_valid:
         return jsonify({'error': error_msg}), 400
 
+    # Get watermark parameters (optional)
+    watermark_text = request.form.get('watermark_text', '').strip() or None
+    watermark_position = request.form.get('watermark_position', 'bottom-right')
+    watermark_opacity = request.form.get('watermark_opacity', 50, type=int)
+    watermark_color = request.form.get('watermark_color', 'white')
+    watermark_size = request.form.get('watermark_size', 5, type=int)
+    watermark_tile_density = request.form.get('watermark_tile_density', 5, type=int)
+
+    # Validate watermark params if text is provided
+    if watermark_text:
+        is_valid, error_msg = validate_watermark_text(watermark_text)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        is_valid, error_msg = validate_watermark_position(watermark_position)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        is_valid, error_msg = validate_watermark_options(watermark_opacity, watermark_size, watermark_color, watermark_tile_density)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
     try:
         result, status = _process_image_file(
             file, compression_mode, resize_mode,
-            max_width, max_height, quality, output_format
+            max_width, max_height, quality, output_format,
+            watermark_text=watermark_text,
+            watermark_position=watermark_position,
+            watermark_opacity=watermark_opacity,
+            watermark_color=watermark_color,
+            watermark_size=watermark_size,
+            watermark_tile_density=watermark_tile_density,
         )
         return jsonify(result), status
 

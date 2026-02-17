@@ -1,6 +1,7 @@
-from PIL import Image, ImageOps, ImageCms
+from PIL import Image, ImageOps, ImageCms, ImageDraw, ImageFont
 import io
 import logging
+from pathlib import Path
 from typing import Tuple, Dict, Optional, List
 from dataclasses import dataclass
 
@@ -36,6 +37,9 @@ class ValidationResult:
 
 
 class ImageCompressor:
+    _FONT_PATH = Path(__file__).parent / 'fonts' / 'Inter-SemiBold.ttf'
+    _font_cache: Dict[int, ImageFont.FreeTypeFont] = {}
+
     def __init__(self, max_file_size_mb: int = 10):
         self.max_file_size = max_file_size_mb * 1024 * 1024  # Convert MB to bytes
         self.compression_modes = {
@@ -43,6 +47,176 @@ class ImageCompressor:
             'web': self._compress_web,
             'high': self._compress_high
         }
+
+    @classmethod
+    def _get_font(cls, size: int) -> ImageFont.FreeTypeFont:
+        """Lazily load and cache font at the given pixel size."""
+        if size not in cls._font_cache:
+            cls._font_cache[size] = ImageFont.truetype(str(cls._FONT_PATH), size)
+        return cls._font_cache[size]
+
+    def _apply_watermark(self, img: Image.Image, text: str, position: str = 'bottom-right',
+                         opacity: int = 50, color: str = 'white',
+                         relative_size: int = 5,
+                         tile_density: int = 5) -> Tuple[Image.Image, bool]:
+        """Apply text watermark onto the image using an RGBA overlay.
+        Returns (image, was_applied) tuple."""
+        w, h = img.size
+
+        # Skip if image too small
+        if min(w, h) < 50:
+            logger.info("Image too small for watermark (%dx%d), skipping", w, h)
+            return img, False
+
+        # Calculate font size relative to shorter dimension
+        font_px = max(12, int(min(w, h) * relative_size * 0.5 / 100))
+        font = self._get_font(font_px)
+
+        # Resolve color
+        if color == 'auto':
+            fill_rgb = self._auto_watermark_color(img, position, font, text, font_px)
+        else:
+            fill_rgb = (255, 255, 255) if color == 'white' else (0, 0, 0)
+
+        shadow_rgb = (0, 0, 0) if fill_rgb == (255, 255, 255) else (255, 255, 255)
+
+        # Scale opacity
+        main_alpha = int(255 * opacity / 100)
+        shadow_alpha = int(main_alpha * 0.5)
+        shadow_offset = max(1, font_px // 20)
+
+        # Create RGBA overlay
+        original_mode = img.mode
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+
+        overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+
+        if position == 'tiled':
+            self._draw_tiled_watermark(overlay, text, font, font_px, w, h,
+                                       fill_rgb, main_alpha, shadow_rgb, shadow_alpha,
+                                       shadow_offset, tile_density)
+        else:
+            draw = ImageDraw.Draw(overlay)
+            # Single watermark
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            margin = int(font_px * 0.75)
+            x, y = self._calc_watermark_position(position, w, h, tw, th, margin)
+
+            # Shadow
+            draw.text((x + shadow_offset, y + shadow_offset), text,
+                      font=font, fill=(*shadow_rgb, shadow_alpha))
+            # Main
+            draw.text((x, y), text, font=font, fill=(*fill_rgb, main_alpha))
+
+        img = Image.alpha_composite(img, overlay)
+
+        # Convert back to original mode if needed
+        if original_mode != 'RGBA':
+            img = img.convert(original_mode)
+
+        return img, True
+
+    def _auto_watermark_color(self, img: Image.Image, position: str,
+                              font: ImageFont.FreeTypeFont, text: str,
+                              font_px: int) -> Tuple[int, int, int]:
+        """Sample the target area luminance and pick white or black for contrast."""
+        w, h = img.size
+        rgb_img = img.convert('RGB') if img.mode != 'RGB' else img
+
+        if position == 'tiled' or position == 'center':
+            # Sample center region
+            cx, cy = w // 2, h // 2
+            region_size = min(w, h) // 4
+            box = (max(0, cx - region_size), max(0, cy - region_size),
+                   min(w, cx + region_size), min(h, cy + region_size))
+        else:
+            # Sample the corner where watermark will be placed
+            margin = int(font_px * 0.75)
+            # Use a rough text size estimate
+            sample_w = min(w // 3, len(text) * font_px)
+            sample_h = font_px * 2
+
+            if 'right' in position:
+                x1 = max(0, w - margin - sample_w)
+                x2 = w
+            else:
+                x1 = 0
+                x2 = min(w, margin + sample_w)
+
+            if 'bottom' in position:
+                y1 = max(0, h - margin - sample_h)
+                y2 = h
+            else:
+                y1 = 0
+                y2 = min(h, margin + sample_h)
+
+            box = (x1, y1, x2, y2)
+
+        region = rgb_img.crop(box)
+        # Average luminance (simple grayscale average)
+        gray = region.convert('L')
+        avg_luminance = sum(gray.getdata()) / max(1, gray.size[0] * gray.size[1])
+
+        return (255, 255, 255) if avg_luminance < 128 else (0, 0, 0)
+
+    @staticmethod
+    def _calc_watermark_position(position: str, img_w: int, img_h: int,
+                                 text_w: int, text_h: int, margin: int) -> Tuple[int, int]:
+        """Calculate (x, y) for watermark placement."""
+        positions = {
+            'bottom-right': (img_w - text_w - margin, img_h - text_h - margin),
+            'bottom-left': (margin, img_h - text_h - margin),
+            'top-right': (img_w - text_w - margin, margin),
+            'top-left': (margin, margin),
+            'center': ((img_w - text_w) // 2, (img_h - text_h) // 2),
+        }
+        return positions.get(position, positions['bottom-right'])
+
+    @staticmethod
+    def _draw_tiled_watermark(overlay: Image.Image, text: str,
+                              font: ImageFont.FreeTypeFont, font_px: int,
+                              img_w: int, img_h: int,
+                              fill_rgb: Tuple[int, int, int], main_alpha: int,
+                              shadow_rgb: Tuple[int, int, int], shadow_alpha: int,
+                              shadow_offset: int, tile_density: int = 5):
+        """Draw repeating diagonal watermark text across the entire image."""
+        draw = ImageDraw.Draw(overlay)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+        # Create a single rotated text stamp
+        angle = -30
+
+        # Padded stamp canvas
+        stamp_w = tw + font_px
+        stamp_h = th + font_px
+        stamp = Image.new('RGBA', (stamp_w, stamp_h), (0, 0, 0, 0))
+        stamp_draw = ImageDraw.Draw(stamp)
+
+        # Center text in stamp
+        tx = (stamp_w - tw) // 2
+        ty = (stamp_h - th) // 2
+
+        stamp_draw.text((tx + shadow_offset, ty + shadow_offset), text,
+                        font=font, fill=(*shadow_rgb, shadow_alpha))
+        stamp_draw.text((tx, ty), text, font=font, fill=(*fill_rgb, main_alpha))
+
+        # Rotate stamp
+        rotated = stamp.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
+        rw, rh = rotated.size
+
+        # Tile spacing: density 1 → 4x (sparse), density 10 → 1.1x (dense)
+        spacing_mult = 4.0 - (tile_density - 1) * (2.9 / 9)
+        spacing_x = max(rw + 1, int(rw * spacing_mult))
+        spacing_y = max(rh + 1, int(rh * spacing_mult))
+
+        # Tile across the image with offset rows
+        for row, y in enumerate(range(-rh, img_h + rh, spacing_y)):
+            x_offset = (spacing_x // 2) * (row % 2)  # Stagger alternating rows
+            for x in range(-rw + x_offset, img_w + rw, spacing_x):
+                overlay.paste(rotated, (x, y), rotated)
 
     def _apply_exif_orientation(self, img: Image.Image) -> Image.Image:
         """Physically rotate pixels to match EXIF orientation tag."""
@@ -358,7 +532,13 @@ class ImageCompressor:
         max_height: Optional[int] = None,
         quality: Optional[int] = None,
         output_format: str = 'auto',
-        preloaded_image: Optional[Image.Image] = None
+        preloaded_image: Optional[Image.Image] = None,
+        watermark_text: Optional[str] = None,
+        watermark_position: str = 'bottom-right',
+        watermark_opacity: int = 50,
+        watermark_color: str = 'white',
+        watermark_size: int = 5,
+        watermark_tile_density: int = 5,
     ) -> Tuple[bytes, Dict]:
         """
         Compress an image using the specified mode and parameters.
@@ -416,6 +596,14 @@ class ImageCompressor:
         if max_width or max_height:
             img = self._resize_image(img, max_width, max_height)
 
+        # Apply watermark after resize, before compression
+        watermark_applied = False
+        if watermark_text:
+            img, watermark_applied = self._apply_watermark(
+                img, watermark_text, watermark_position,
+                watermark_opacity, watermark_color, watermark_size,
+                watermark_tile_density)
+
         # Apply compression based on mode
         # For explicit format targets, bypass mode dispatch with format-specific methods
         strip_metadata = mode != 'lossless'
@@ -467,7 +655,8 @@ class ImageCompressor:
             'compression_ratio': compression_ratio,
             'format': resolved_format,
             'original_format': original_format,
-            'format_warnings': format_warnings
+            'format_warnings': format_warnings,
+            'watermarked': watermark_applied,
         }
 
         return compressed_data, metadata

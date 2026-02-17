@@ -140,6 +140,90 @@
                             </div>
                         </div>
                     </fieldset>
+
+                    <!-- Watermark -->
+                    <fieldset class="settings-panel__fieldset settings-panel__fieldset--full">
+                        <legend class="settings-panel__legend watermark-legend">
+                            <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-type"/></svg>
+                            <span>Watermark</span>
+                            <label class="watermark-toggle" for="watermark-toggle">
+                                <input type="checkbox" id="watermark-toggle" class="watermark-toggle__input sr-only">
+                                <span class="watermark-toggle__switch" aria-hidden="true"></span>
+                                <span class="sr-only">Enable watermark</span>
+                            </label>
+                        </legend>
+
+                        <div class="watermark-body is-hidden" id="watermark-body">
+                            <input type="text" class="watermark-text__input" id="watermark-text"
+                                   placeholder="&copy; Your Name" maxlength="50"
+                                   aria-label="Watermark text">
+
+                            <div class="watermark-options">
+                                <div class="watermark-options__group">
+                                    <span class="watermark-options__label">Position</span>
+                                    <div class="segmented-control segmented-control--sm segmented-control--wrap" role="radiogroup" aria-label="Watermark position" id="watermark-position-control">
+                                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="top-left" title="Top Left">TL</button>
+                                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="top-right" title="Top Right">TR</button>
+                                        <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="bottom-right" title="Bottom Right">BR</button>
+                                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="bottom-left" title="Bottom Left">BL</button>
+                                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="center" title="Center">Center</button>
+                                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="tiled" title="Tiled">Tiled</button>
+                                    </div>
+                                </div>
+
+                                <div class="watermark-options__group">
+                                    <span class="watermark-options__label">Color</span>
+                                    <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Watermark color" id="watermark-color-control">
+                                        <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="white">White</button>
+                                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="black">Black</button>
+                                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="auto">Auto</button>
+                                    </div>
+                                </div>
+
+                                <div class="watermark-options__group">
+                                    <div class="quality-slider">
+                                        <div class="quality-slider__header">
+                                            <label class="quality-slider__label" for="watermark-opacity-slider">Opacity</label>
+                                            <output class="quality-slider__value" id="watermark-opacity-value" for="watermark-opacity-slider">50%</output>
+                                        </div>
+                                        <input type="range" class="quality-slider__input" id="watermark-opacity-slider" min="10" max="100" step="5" value="50">
+                                        <div class="quality-slider__range-labels">
+                                            <span>Subtle</span>
+                                            <span>Opaque</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="watermark-options__group">
+                                    <div class="quality-slider">
+                                        <div class="quality-slider__header">
+                                            <label class="quality-slider__label" for="watermark-size-slider">Size</label>
+                                            <output class="quality-slider__value" id="watermark-size-value" for="watermark-size-slider">5</output>
+                                        </div>
+                                        <input type="range" class="quality-slider__input" id="watermark-size-slider" min="1" max="20" value="5">
+                                        <div class="quality-slider__range-labels">
+                                            <span>Subtle</span>
+                                            <span>Bold</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="watermark-options__group watermark-options__group--full is-hidden" id="watermark-density-group">
+                                    <div class="quality-slider">
+                                        <div class="quality-slider__header">
+                                            <label class="quality-slider__label" for="watermark-density-slider">Tile Density</label>
+                                            <output class="quality-slider__value" id="watermark-density-value" for="watermark-density-slider">5</output>
+                                        </div>
+                                        <input type="range" class="quality-slider__input" id="watermark-density-slider" min="1" max="10" value="5">
+                                        <div class="quality-slider__range-labels">
+                                            <span>Sparse</span>
+                                            <span>Dense</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
                 </div>
             </section>
             <p class="workspace__empty-formats">JPG, PNG, WebP, TIFF &middot; Max 50 MB per file</p>
