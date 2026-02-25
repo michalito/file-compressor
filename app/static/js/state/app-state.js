@@ -12,7 +12,7 @@ const defaultState = {
   settings: {
     compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
     resize: { mode: 'original', width: null, height: null },
-    watermark: { enabled: false, text: '', position: 'bottom-right', opacity: 50, color: 'white', size: 5, tileDensity: 5 },
+    watermark: { enabled: false, text: '', position: 'bottom-right', opacity: 50, color: 'white', size: 5, tileDensity: 5, angle: 0 },
   },
 
   // Files (runtime only)

@@ -235,9 +235,10 @@ def validate_watermark_position(position: str) -> Tuple[bool, Optional[str]]:
 
 
 def validate_watermark_options(opacity: int, size: int, color: str,
-                               tile_density: int = 5) -> Tuple[bool, Optional[str]]:
+                               tile_density: int = 5,
+                               angle: int = 0) -> Tuple[bool, Optional[str]]:
     """
-    Validate watermark opacity, size, color, and tile density.
+    Validate watermark opacity, size, color, tile density, and angle.
     """
     if not isinstance(opacity, int) or opacity < 10 or opacity > 100:
         return False, "Watermark opacity must be between 10 and 100"
@@ -250,6 +251,9 @@ def validate_watermark_options(opacity: int, size: int, color: str,
 
     if not isinstance(tile_density, int) or tile_density < 1 or tile_density > 10:
         return False, "Watermark tile density must be between 1 and 10"
+
+    if not isinstance(angle, int) or angle < -180 or angle > 180:
+        return False, "Watermark angle must be between -180 and 180"
 
     return True, None
 

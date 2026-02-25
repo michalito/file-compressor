@@ -58,9 +58,11 @@ class ImageCompressor:
     def _apply_watermark(self, img: Image.Image, text: str, position: str = 'bottom-right',
                          opacity: int = 50, color: str = 'white',
                          relative_size: int = 5,
-                         tile_density: int = 5) -> Tuple[Image.Image, bool]:
+                         tile_density: int = 5,
+                         angle: int = 0) -> Tuple[Image.Image, bool]:
         """Apply text watermark onto the image using an RGBA overlay.
-        Returns (image, was_applied) tuple."""
+        Returns (image, was_applied) tuple.
+        angle: rotation in degrees, positive = clockwise visual rotation."""
         w, h = img.size
 
         # Skip if image too small
@@ -95,20 +97,39 @@ class ImageCompressor:
         if position == 'tiled':
             self._draw_tiled_watermark(overlay, text, font, font_px, w, h,
                                        fill_rgb, main_alpha, shadow_rgb, shadow_alpha,
-                                       shadow_offset, tile_density)
+                                       shadow_offset, tile_density, angle)
         else:
             draw = ImageDraw.Draw(overlay)
             # Single watermark
             bbox = draw.textbbox((0, 0), text, font=font)
             tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
             margin = int(font_px * 0.75)
-            x, y = self._calc_watermark_position(position, w, h, tw, th, margin)
 
-            # Shadow
-            draw.text((x + shadow_offset, y + shadow_offset), text,
-                      font=font, fill=(*shadow_rgb, shadow_alpha))
-            # Main
-            draw.text((x, y), text, font=font, fill=(*fill_rgb, main_alpha))
+            if angle == 0:
+                # No rotation — draw directly (preserves exact current rendering)
+                x, y = self._calc_watermark_position(position, w, h, tw, th, margin)
+                draw.text((x + shadow_offset, y + shadow_offset), text,
+                          font=font, fill=(*shadow_rgb, shadow_alpha))
+                draw.text((x, y), text, font=font, fill=(*fill_rgb, main_alpha))
+            else:
+                # Create a stamp, rotate, and paste at calculated position
+                stamp_w = tw + font_px
+                stamp_h = th + font_px
+                stamp = Image.new('RGBA', (stamp_w, stamp_h), (0, 0, 0, 0))
+                stamp_draw = ImageDraw.Draw(stamp)
+                tx = (stamp_w - tw) // 2
+                ty = (stamp_h - th) // 2
+                stamp_draw.text((tx + shadow_offset, ty + shadow_offset), text,
+                                font=font, fill=(*shadow_rgb, shadow_alpha))
+                stamp_draw.text((tx, ty), text, font=font, fill=(*fill_rgb, main_alpha))
+
+                # Negate angle for PIL's CCW convention (positive = clockwise visual)
+                rotated = stamp.rotate(-angle, expand=True, resample=Image.Resampling.BICUBIC)
+                rw, rh = rotated.size
+
+                # Calculate position using rotated dimensions
+                x, y = self._calc_watermark_position(position, w, h, rw, rh, margin)
+                overlay.paste(rotated, (x, y), rotated)
 
         img = Image.alpha_composite(img, overlay)
 
@@ -180,14 +201,16 @@ class ImageCompressor:
                               img_w: int, img_h: int,
                               fill_rgb: Tuple[int, int, int], main_alpha: int,
                               shadow_rgb: Tuple[int, int, int], shadow_alpha: int,
-                              shadow_offset: int, tile_density: int = 5):
-        """Draw repeating diagonal watermark text across the entire image."""
+                              shadow_offset: int, tile_density: int = 5,
+                              angle: int = 0):
+        """Draw repeating watermark text across the entire image.
+        angle: rotation in degrees, positive = clockwise visual rotation."""
         draw = ImageDraw.Draw(overlay)
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        # Create a single rotated text stamp
-        angle = -30
+        # Negate angle for PIL's CCW convention (positive = clockwise visual)
+        pil_angle = -angle
 
         # Padded stamp canvas
         stamp_w = tw + font_px
@@ -204,7 +227,7 @@ class ImageCompressor:
         stamp_draw.text((tx, ty), text, font=font, fill=(*fill_rgb, main_alpha))
 
         # Rotate stamp
-        rotated = stamp.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
+        rotated = stamp.rotate(pil_angle, expand=True, resample=Image.Resampling.BICUBIC)
         rw, rh = rotated.size
 
         # Tile spacing: density 1 → 4x (sparse), density 10 → 1.1x (dense)
@@ -539,6 +562,7 @@ class ImageCompressor:
         watermark_color: str = 'white',
         watermark_size: int = 5,
         watermark_tile_density: int = 5,
+        watermark_angle: int = 0,
     ) -> Tuple[bytes, Dict]:
         """
         Compress an image using the specified mode and parameters.
@@ -602,7 +626,7 @@ class ImageCompressor:
             img, watermark_applied = self._apply_watermark(
                 img, watermark_text, watermark_position,
                 watermark_opacity, watermark_color, watermark_size,
-                watermark_tile_density)
+                watermark_tile_density, watermark_angle)
 
         # Apply compression based on mode
         # For explicit format targets, bypass mode dispatch with format-specific methods

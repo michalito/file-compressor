@@ -64,6 +64,7 @@ const tools = {
         formData.append('watermark_opacity', settings.opacity);
         formData.append('watermark_color', settings.color);
         formData.append('watermark_size', settings.size);
+        formData.append('watermark_angle', settings.angle ?? 0);
         if (settings.position === 'tiled') {
           formData.append('watermark_tile_density', settings.tileDensity);
         }
@@ -339,6 +340,18 @@ function initWatermark() {
       updateSettings('watermark', { tileDensity: parseInt(densitySlider.value, 10) });
     });
   }
+
+  // Angle slider
+  const angleSlider = $('#watermark-angle-slider');
+  const angleValue = $('#watermark-angle-value');
+  if (angleSlider) {
+    angleSlider.addEventListener('input', () => {
+      if (angleValue) angleValue.textContent = `${angleSlider.value}\u00b0`;
+    });
+    angleSlider.addEventListener('change', () => {
+      updateSettings('watermark', { angle: parseInt(angleSlider.value, 10) });
+    });
+  }
 }
 
 /* ── Panel positioning ────────────────────────────────────────────── */
@@ -446,6 +459,11 @@ function syncControlsFromState() {
   if (densitySlider) densitySlider.value = watermark.tileDensity;
   if (densityValue) densityValue.textContent = watermark.tileDensity;
   toggleHidden('#watermark-density-group', watermark.position !== 'tiled');
+
+  const angleSlider = $('#watermark-angle-slider');
+  const angleValueEl = $('#watermark-angle-value');
+  if (angleSlider) angleSlider.value = watermark.angle ?? 0;
+  if (angleValueEl) angleValueEl.textContent = `${watermark.angle ?? 0}\u00b0`;
 
   updateSummary();
 }

@@ -82,7 +82,7 @@ def index():
 def _process_image_file(file, compression_mode, resize_mode, max_width, max_height, quality, output_format,
                         watermark_text=None, watermark_position='bottom-right',
                         watermark_opacity=50, watermark_color='white', watermark_size=5,
-                        watermark_tile_density=5):
+                        watermark_tile_density=5, watermark_angle=0):
     """Validate, compress, encode, and build response for a single image file.
 
     Returns (response_dict, status_code) tuple.
@@ -114,6 +114,7 @@ def _process_image_file(file, compression_mode, resize_mode, max_width, max_heig
         watermark_color=watermark_color,
         watermark_size=watermark_size,
         watermark_tile_density=watermark_tile_density,
+        watermark_angle=watermark_angle,
     )
 
     # Encode as base64
@@ -193,6 +194,7 @@ def process_image():
     watermark_color = request.form.get('watermark_color', 'white')
     watermark_size = request.form.get('watermark_size', 5, type=int)
     watermark_tile_density = request.form.get('watermark_tile_density', 5, type=int)
+    watermark_angle = request.form.get('watermark_angle', 0, type=int)
 
     # Validate watermark params if text is provided
     if watermark_text:
@@ -204,7 +206,7 @@ def process_image():
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        is_valid, error_msg = validate_watermark_options(watermark_opacity, watermark_size, watermark_color, watermark_tile_density)
+        is_valid, error_msg = validate_watermark_options(watermark_opacity, watermark_size, watermark_color, watermark_tile_density, watermark_angle)
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
@@ -218,6 +220,7 @@ def process_image():
             watermark_color=watermark_color,
             watermark_size=watermark_size,
             watermark_tile_density=watermark_tile_density,
+            watermark_angle=watermark_angle,
         )
         return jsonify(result), status
 
