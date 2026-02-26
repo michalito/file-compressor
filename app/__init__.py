@@ -79,6 +79,14 @@ def create_app():
     app.auth = auth
     app.limiter = auth.limiter
 
+    # Prevent CDN/proxy caching of dynamic responses (breaks session cookies)
+    @app.after_request
+    def set_cache_headers(response):
+        if 'text/html' in response.content_type:
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+        return response
+
     # Register blueprints
     with app.app_context():
         from app.routes import main

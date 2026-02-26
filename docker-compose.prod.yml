@@ -7,7 +7,7 @@ services:
       - .env
     environment:
       - FLASK_ENV=production
-      - PROXY_FIX=false
+      - PROXY_FIX=true
     volumes:
       - app_secrets:/app/instance/secrets
     restart: unless-stopped
