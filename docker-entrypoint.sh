@@ -13,8 +13,9 @@ if [ -z "$APP_PASSWORD" ]; then
 fi
 
 # Create .env file with secure permissions
-echo "SECRET_KEY=$SECRET_KEY" > /app/instance/secrets/.env
-echo "APP_PASSWORD=$APP_PASSWORD" >> /app/instance/secrets/.env
+# Use printf with %s to avoid shell expansion of special characters in values
+printf 'SECRET_KEY=%s\n' "$SECRET_KEY" > /app/instance/secrets/.env
+printf 'APP_PASSWORD=%s\n' "$APP_PASSWORD" >> /app/instance/secrets/.env
 
 chmod 600 /app/instance/secrets/.env
 

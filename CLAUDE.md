@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Compressify** — a self-hosted, password-protected web app for image compression, resizing, and watermarking. All processing happens in-memory (no files on disk).
+
 ## Development Commands
 
 ### Running the Application
@@ -23,7 +25,17 @@ docker-compose -f docker-compose.prod.yml up -d --build
 docker-compose -f docker-compose.prod.yml logs -f web
 ```
 
+Production deployment (with rollback support):
+```bash
+./run-prod.sh              # Full deploy: pull → build → start → health check
+./run-prod.sh rollback     # Roll back to previous image
+./run-prod.sh status       # Show container & image status
+./run-prod.sh logs         # Tail container logs
+```
+
 ### Environment Setup
+
+Requires Python 3.11+ (matches Dockerfile base image).
 
 ```bash
 cp example.env .env
@@ -84,6 +96,7 @@ Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
 - CSS: design tokens (`tokens.css`), BEM naming, component files in `css/components/`, page files in `css/pages/`
 - SVG sprite sheet in `base.html` (Lucide-style icons)
 - UX flow: Upload → Auto-Process → Download (no manual Process button)
+- Batch: 5 concurrent uploads (CHUNK_SIZE), ZIP download via JSZip loaded from CDN (`cdnjs.cloudflare.com`)
 - Settings panel repositions: in empty state → inside `#workspace-empty`; with files → after `#workspace-toolbar`
 - `textContent`/`sanitizeText()` everywhere — no innerHTML for user content
 - `crypto.randomUUID()` for file IDs
