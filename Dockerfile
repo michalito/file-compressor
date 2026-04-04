@@ -80,6 +80,6 @@ CMD ["gunicorn", \
      "--worker-class", "sync", \
      "--worker-connections", "1000", \
      "--preload", \
-     "--access-logfile", "-", \
+     "--access-logfile", "/dev/null", \
      "--error-logfile", "-", \
      "run:app"]
