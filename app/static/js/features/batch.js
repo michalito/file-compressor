@@ -8,6 +8,7 @@ import { state, clearAllFiles, updateFile } from '../state/app-state.js';
 import { processTile } from './image-tile.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
+import { showConfirm } from '../components/confirm.js';
 
 let processing = false;
 let abortController = null;
@@ -33,10 +34,18 @@ export function initBatch() {
 
   // Clear All (with confirmation)
   if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
+    clearBtn.addEventListener('click', async () => {
       const count = state.files.size;
       if (count === 0) return;
-      if (!confirm(`Clear all ${count} file${count > 1 ? 's' : ''}? Processed results will be lost.`)) return;
+
+      const confirmed = await showConfirm({
+        title: 'Clear all files?',
+        message: `${count} file${count > 1 ? 's' : ''} and their processed results will be permanently lost.`,
+        confirmLabel: 'Clear All',
+        variant: 'danger',
+      });
+      if (!confirmed) return;
+
       clearAllFiles();
     });
   }

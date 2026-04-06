@@ -20,10 +20,13 @@ if (appLayout) {
   const { initBatch } = await import('./features/batch.js');
   const { initCrop } = await import('./features/crop.js');
 
+  const { initUnloadWarning } = await import('./components/unsaved-changes.js');
+
   initSettings();
   initApp();
   initBatch();
   initCrop();
+  initUnloadWarning();
 } else if (loginForm) {
   // Login page
   const { initLogin } = await import('./features/login.js');
