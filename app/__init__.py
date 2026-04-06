@@ -6,6 +6,16 @@ from .auth import Auth
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf.csrf import CSRFProtect
 
+def _read_version():
+    for path in ('VERSION', os.path.join(os.path.dirname(__file__), '..', 'VERSION')):
+        try:
+            with open(path) as f:
+                return f.read().strip()
+        except OSError:
+            continue
+    return 'dev'
+
+
 def create_app():
     app = Flask(__name__)
 
@@ -86,6 +96,9 @@ def create_app():
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'
         return response
+
+    # Make app version available to all templates
+    app.jinja_env.globals['app_version'] = _read_version()
 
     # Register blueprints
     with app.app_context():

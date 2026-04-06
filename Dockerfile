@@ -47,6 +47,7 @@ RUN useradd -m appuser && \
 # Copy application code
 COPY app app/
 COPY run.py .
+COPY VERSION .
 
 # Copy and prepare entrypoint script
 COPY docker-entrypoint.sh /app/

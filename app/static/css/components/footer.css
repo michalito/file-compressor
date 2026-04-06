@@ -26,6 +26,13 @@
   color: var(--color-text-tertiary);
 }
 
+.footer__version {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+}
+
 .footer__separator {
   color: var(--color-border);
   user-select: none;
