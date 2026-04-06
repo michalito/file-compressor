@@ -685,6 +685,64 @@ class ImageCompressor:
 
         return compressed_data, metadata
 
+    def crop_image(self, image_data: bytes, x: int, y: int,
+                   width: int, height: int,
+                   preloaded_image: Optional[Image.Image] = None) -> Tuple[bytes, Dict]:
+        """
+        Crop an already-processed image and re-encode in the same format.
+        Coordinates are in actual image pixels.
+        Returns (cropped_bytes, metadata).
+        """
+        img = preloaded_image if preloaded_image is not None else Image.open(io.BytesIO(image_data))
+        original_format = img.format or 'PNG'
+        original_size = len(image_data)
+        original_dimensions = img.size
+
+        img_w, img_h = img.size
+        if x < 0 or y < 0 or width < 1 or height < 1:
+            raise ImageValidationError("Invalid crop coordinates")
+        if x + width > img_w or y + height > img_h:
+            raise ImageValidationError(
+                f"Crop region ({x},{y},{width},{height}) exceeds image bounds ({img_w}x{img_h})"
+            )
+
+        cropped = img.crop((x, y, x + width, y + height))
+
+        # Re-encode in the same format with high quality
+        output = io.BytesIO()
+        fmt = original_format.upper()
+        if fmt in ('JPEG', 'JPG'):
+            save_img = self._remove_transparency(cropped)
+            if save_img.mode != 'RGB':
+                save_img = save_img.convert('RGB')
+            save_img.save(output, format='JPEG', quality=95,
+                          optimize=True, progressive=True)
+            resolved_format = 'JPEG'
+        elif fmt == 'WEBP':
+            if cropped.mode not in ('RGB', 'RGBA'):
+                cropped = cropped.convert('RGB')
+            cropped.save(output, format='WEBP', quality=95, method=4)
+            resolved_format = 'WEBP'
+        elif fmt == 'TIFF':
+            cropped.save(output, format='TIFF', compression='tiff_adobe_deflate')
+            resolved_format = 'TIFF'
+        else:
+            cropped.save(output, format='PNG', optimize=True, compress_level=9)
+            resolved_format = 'PNG'
+
+        cropped_data = output.getvalue()
+
+        metadata = {
+            'original_size': original_size,
+            'compressed_size': len(cropped_data),
+            'original_dimensions': original_dimensions,
+            'final_dimensions': (width, height),
+            'format': resolved_format,
+            'cropped': True,
+        }
+
+        return cropped_data, metadata
+
     def _resize_image(self, img: Image.Image, max_width: Optional[int], max_height: Optional[int]) -> Image.Image:
         """Resize image maintaining aspect ratio"""
         if not max_width and not max_height:

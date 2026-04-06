@@ -3,12 +3,13 @@ import io
 
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session
 
-from .compression import ImageCompressor
+from .compression import ImageCompressor, ImageValidationError
 from .auth import RateLimitExceeded
 from .validators import (
     validate_file, validate_compression_mode, validate_resize_mode,
     validate_dimensions, validate_quality, validate_output_format,
-    validate_theme, validate_download_data, sanitize_filename,
+    validate_theme, validate_download_data, validate_crop_coordinates,
+    sanitize_filename,
     validate_watermark_text, validate_watermark_position, validate_watermark_options
 )
 from .forms import LoginForm
@@ -274,6 +275,82 @@ def download_file():
     except Exception as e:
         current_app.logger.error(f"Download failed: {e}")
         return jsonify({'error': 'Download failed'}), 500
+
+
+@main.route('/crop', methods=['POST'])
+@current_app.auth.login_required
+def crop_image():
+    """Crop an already-processed image using pixel coordinates."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        compressed_data_str = data.get('compressed_data', '')
+        filename = data.get('filename', '')
+        crop = data.get('crop') or {}
+
+        # Validate base64 data and filename
+        is_valid, error_msg = validate_download_data(compressed_data_str, filename)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        # Extract crop coordinates
+        try:
+            crop_x = int(crop.get('x', -1))
+            crop_y = int(crop.get('y', -1))
+            crop_w = int(crop.get('width', 0))
+            crop_h = int(crop.get('height', 0))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid crop coordinates'}), 400
+
+        # Decode base64
+        try:
+            image_bytes = base64.b64decode(compressed_data_str)
+        except Exception:
+            return jsonify({'error': 'Invalid data encoding'}), 400
+
+        # Validate image (size, format, dimensions) — same guards as /process
+        validation = compressor.validate_image(image_bytes)
+        if not validation.is_valid:
+            return jsonify({
+                'error': 'Image validation failed',
+                'details': validation.errors,
+            }), 400
+
+        img_w, img_h = validation.image.size
+
+        # Validate crop coordinates against actual image dimensions
+        is_valid, error_msg = validate_crop_coordinates(
+            crop_x, crop_y, crop_w, crop_h, img_w, img_h)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        # Perform the crop, reusing the already-opened image
+        cropped_data, metadata = compressor.crop_image(
+            image_bytes, crop_x, crop_y, crop_w, crop_h,
+            preloaded_image=validation.image)
+
+        # Encode result as base64
+        b64_data = base64.b64encode(cropped_data).decode('ascii')
+
+        # Sanitize filename
+        filename = sanitize_filename(filename)
+
+        return jsonify({
+            'compressed_data': b64_data,
+            'filename': filename,
+            'metadata': {
+                **metadata,
+                'encoding': 'base64',
+            },
+        }), 200
+
+    except ImageValidationError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Crop failed: {e}")
+        return jsonify({'error': 'Crop failed'}), 500
 
 
 @main.route('/theme', methods=['POST'])

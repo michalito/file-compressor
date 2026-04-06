@@ -1,4 +1,4 @@
 # app/compression/__init__.py
-from .image_processor import ImageCompressor
+from .image_processor import ImageCompressor, ImageValidationError
 
-__all__ = ['ImageCompressor']
+__all__ = ['ImageCompressor', 'ImageValidationError']

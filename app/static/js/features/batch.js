@@ -1,11 +1,11 @@
 /**
  * Batch operations: auto-process, queue processing, ZIP download, file management.
  */
-import { $, downloadBlob } from '../lib/dom.js';
+import { $, downloadBlob, base64ToUint8Array } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import { postJSON } from '../lib/api.js';
 import { state, clearAllFiles, updateFile } from '../state/app-state.js';
-import { processTile, base64ToUint8Array } from './image-tile.js';
+import { processTile } from './image-tile.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 
@@ -176,7 +176,11 @@ async function reprocessAll() {
 
   // Reset done files to pending
   doneIds.forEach((fileId) => {
-    updateFile(fileId, { status: 'pending', processedData: null, processedWithSettings: null });
+    // Keep processedData intact so processImage can read prevOriginalSize
+    // from metadata (for accurate savings display). processImage overwrites
+    // processedData on success. processedWithSettings is nulled so the
+    // reprocess button hides once batch starts.
+    updateFile(fileId, { status: 'pending', processedWithSettings: null });
     const tile = document.querySelector(`[data-file-id="${fileId}"]`);
     if (tile) {
       tile.classList.remove('is-done');

@@ -18,10 +18,12 @@ if (appLayout) {
   const { initApp } = await import('./features/upload.js');
   const { initSettings } = await import('./features/settings.js');
   const { initBatch } = await import('./features/batch.js');
+  const { initCrop } = await import('./features/crop.js');
 
   initSettings();
   initApp();
   initBatch();
+  initCrop();
 } else if (loginForm) {
   // Login page
   const { initLogin } = await import('./features/login.js');

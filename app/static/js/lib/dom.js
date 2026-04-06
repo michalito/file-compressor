@@ -66,6 +66,27 @@ export function downloadBlob(blob, filename) {
 }
 
 /**
+ * Convert a base64 string to a Uint8Array.
+ */
+export function base64ToUint8Array(base64String) {
+  const binaryString = atob(base64String);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Map image format string (e.g. 'JPEG', 'PNG') to MIME type.
+ */
+export function formatToMime(fmt) {
+  const f = (fmt || 'jpeg').toLowerCase();
+  return f === 'png' ? 'image/png' : f === 'webp' ? 'image/webp' : f === 'tiff' ? 'image/tiff' : 'image/jpeg';
+}
+
+/**
  * Render an SVG icon from the sprite sheet.
  * @param {string} name - icon name (without 'icon-' prefix)
  * @param {number} size

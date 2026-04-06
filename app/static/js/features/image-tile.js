@@ -1,13 +1,14 @@
 /**
  * Image tile: lifecycle (create, update, remove, blob URL management).
  */
-import { $, createElement, icon, downloadBlob } from '../lib/dom.js';
+import { $, createElement, icon, downloadBlob, base64ToUint8Array, formatToMime } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import { postForm, postJSON } from '../lib/api.js';
 import { state, updateFile, removeFile } from '../state/app-state.js';
 import { appendSettingsToFormData } from './settings.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
+import { openCropModal } from './crop.js';
 
 // Wire up event-driven DOM cleanup
 bus.on('files:removed', ({ fileId }) => {
@@ -21,6 +22,33 @@ bus.on('files:cleared', () => {
     const tiles = grid.querySelectorAll('.tile');
     tiles.forEach((tile) => tile.remove());
   }
+});
+
+// Update tile UI after cropping
+bus.on('file:cropped', ({ fileId, metadata }) => {
+  const tile = $(`[data-file-id="${fileId}"]`);
+  if (!tile) return;
+
+  // Update processed info section
+  updateTileWithResults(tile, metadata);
+
+  // Update preview image (crop.js already created a blob URL in entry.blobUrl)
+  const entry = state.files.get(fileId);
+  if (entry?.blobUrl) {
+    const img = tile.querySelector('.tile__image');
+    if (img) img.src = entry.blobUrl;
+  }
+
+  // Add Cropped badge if not already present
+  const badges = tile.querySelector('.tile__status-badges');
+  if (badges && !badges.querySelector('.badge--cropped')) {
+    const croppedBadge = createElement('span', { class: 'badge badge--info badge--cropped' }, 'Cropped');
+    badges.appendChild(croppedBadge);
+  }
+
+  // Show Reset button
+  const resetBtn = tile.querySelector('.tile__reset-crop-btn');
+  if (resetBtn) resetBtn.classList.remove('is-hidden');
 });
 
 /**
@@ -78,6 +106,18 @@ export function createImageTile(fileId, file, blobUrl) {
   const downloadBtn = tile.querySelector('.tile__download-btn');
   downloadBtn.addEventListener('click', () => downloadFile(fileId, tile));
 
+  // Crop button
+  const cropBtn = tile.querySelector('.tile__crop-btn');
+  if (cropBtn) {
+    cropBtn.addEventListener('click', () => openCropModal(fileId));
+  }
+
+  // Reset crop button — restores original file and reprocesses
+  const resetCropBtn = tile.querySelector('.tile__reset-crop-btn');
+  if (resetCropBtn) {
+    resetCropBtn.addEventListener('click', () => resetCrop(fileId, tile));
+  }
+
   grid.appendChild(clone);
 }
 
@@ -91,6 +131,23 @@ export async function processTile(fileId, { skipGlobalProgress = false, signal }
   const tile = $(`[data-file-id="${fileId}"]`);
   if (!tile) return;
   return processImage(fileId, tile, skipGlobalProgress, signal);
+}
+
+/**
+ * Reset to original file (undo all crops) and reprocess.
+ */
+function resetCrop(fileId, tile) {
+  const entry = state.files.get(fileId);
+  if (!entry?.originalFile) return;
+
+  // Restore original file
+  updateFile(fileId, {
+    file: entry.originalFile,
+    originalFile: null,
+  });
+
+  // Reprocess from the original
+  processImage(fileId, tile);
 }
 
 /**
@@ -121,6 +178,7 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
   const progressEl = tile.querySelector('.tile__progress');
   const retryBtn = tile.querySelector('.tile__retry-btn');
   const downloadBtn = tile.querySelector('.tile__download-btn');
+  const cropBtn = tile.querySelector('.tile__crop-btn');
 
   try {
     updateFile(fileId, { status: 'processing' });
@@ -128,9 +186,15 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
     tile.classList.add('is-processing');
     retryBtn.classList.add('is-hidden');
     tile.classList.remove('is-done');
+    // Hide crop and reset buttons during reprocessing
+    if (cropBtn) cropBtn.classList.add('is-hidden');
+    const resetCropBtn = tile.querySelector('.tile__reset-crop-btn');
+    if (resetCropBtn) resetCropBtn.classList.add('is-hidden');
     // Clear stale state from previous attempt
     const cancelledBadge = tile.querySelector('.badge--cancelled');
     if (cancelledBadge) cancelledBadge.remove();
+    const croppedBadge = tile.querySelector('.badge--cropped');
+    if (croppedBadge) croppedBadge.remove();
     tile.querySelectorAll('.tile__warning').forEach((el) => el.remove());
     if (!skipGlobalProgress) {
       globalProgress.show();
@@ -144,13 +208,21 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
     const response = await postForm('/process', formData, { signal });
     const result = await response.json();
 
+    // On reprocess, carry forward the original upload's size so savings
+    // percentage stays relative to the upload, not the intermediate file
+    const resultMetadata = { ...result.metadata };
+    const prevOriginalSize = entry.processedData?.metadata?.original_size;
+    if (prevOriginalSize) {
+      resultMetadata.original_size = prevOriginalSize;
+    }
+
     // Store processed data and snapshot of settings used
     updateFile(fileId, {
       status: 'done',
       processedData: {
         data: result.compressed_data,
         filename: result.filename,
-        metadata: result.metadata,
+        metadata: resultMetadata,
       },
       processedWithSettings: JSON.parse(JSON.stringify(state.settings)),
     });
@@ -159,7 +231,26 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
     downloadBtn.disabled = false;
     downloadBtn.removeAttribute('title');
     tile.classList.add('is-done');
-    updateTileWithResults(tile, result.metadata);
+
+    // Show crop button (only for browser-displayable formats, not TIFF)
+    const outputFormat = (result.metadata.format || '').toUpperCase();
+    if (cropBtn && outputFormat !== 'TIFF') cropBtn.classList.remove('is-hidden');
+
+    // Re-show Reset if the original pre-crop file is still stashed
+    const resetBtn = tile.querySelector('.tile__reset-crop-btn');
+    if (resetBtn && entry.originalFile) resetBtn.classList.remove('is-hidden');
+
+    updateTileWithResults(tile, resultMetadata);
+
+    // Update preview with the processed image
+    const previewBytes = base64ToUint8Array(result.compressed_data);
+    const previewMime = formatToMime(resultMetadata.format);
+    const previewBlob = new Blob([previewBytes], { type: previewMime });
+    const newBlobUrl = URL.createObjectURL(previewBlob);
+    const previewImg = tile.querySelector('.tile__image');
+    if (previewImg) previewImg.src = newBlobUrl;
+    if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl);
+    updateFile(fileId, { blobUrl: newBlobUrl });
 
     // Show status badges
     const badges = tile.querySelector('.tile__status-badges');
@@ -305,15 +396,3 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 
-/**
- * Base64-to-Uint8Array helper (for ZIP).
- */
-export function base64ToUint8Array(base64String) {
-  const binaryString = atob(base64String);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}

@@ -97,5 +97,6 @@ def create_app():
     app.view_functions['main.login'] = limiter.limit("10 per minute")(app.view_functions['main.login'])
     app.view_functions['main.process_image'] = limiter.limit("30 per minute")(app.view_functions['main.process_image'])
     app.view_functions['main.download_file'] = limiter.limit("120 per minute")(app.view_functions['main.download_file'])
+    app.view_functions['main.crop_image'] = limiter.limit("30 per minute")(app.view_functions['main.crop_image'])
 
     return app

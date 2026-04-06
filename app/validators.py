@@ -258,6 +258,35 @@ def validate_watermark_options(opacity: int, size: int, color: str,
     return True, None
 
 
+def validate_crop_coordinates(x: int, y: int, width: int, height: int,
+                              image_width: int, image_height: int) -> Tuple[bool, Optional[str]]:
+    """
+    Validate crop coordinates against image dimensions.
+
+    Args:
+        x, y: Top-left corner of crop region
+        width, height: Size of crop region
+        image_width, image_height: Actual image dimensions
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    for name, val in [('x', x), ('y', y), ('width', width), ('height', height)]:
+        if not isinstance(val, int) or val < 0:
+            return False, f"Crop {name} must be a non-negative integer"
+
+    if width < 1 or height < 1:
+        return False, "Crop width and height must be at least 1 pixel"
+
+    if x + width > image_width:
+        return False, "Crop region exceeds image width"
+
+    if y + height > image_height:
+        return False, "Crop region exceeds image height"
+
+    return True, None
+
+
 def sanitize_filename(filename: str) -> str:
     """
     Sanitize a filename to remove potentially dangerous characters.

@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/image-tile.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/action-bar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/settings-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/crop-editor.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -247,6 +248,40 @@
         <!-- Image Grid -->
         <div class="image-grid is-hidden" id="image-grid">
             {% include 'image_tile_template.html' %}
+        </div>
+    </div>
+</div>
+
+<!-- Crop Modal -->
+<div id="crop-modal" class="modal">
+    <div class="modal__content crop-modal__content">
+        <div class="modal__header">
+            <h2 class="modal__title">Crop Image</h2>
+            <button class="modal__close" id="crop-modal-close" type="button" aria-label="Close">
+                <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#icon-x"/></svg>
+            </button>
+        </div>
+        <div class="modal__body crop-editor">
+            <div class="crop-editor__toolbar">
+                <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Aspect ratio" id="crop-ratio-control">
+                    <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="free">Free</button>
+                    <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="1:1">1:1</button>
+                    <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="4:3">4:3</button>
+                    <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="3:2">3:2</button>
+                    <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="16:9">16:9</button>
+                    <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="9:16">9:16</button>
+                </div>
+            </div>
+            <div class="crop-editor__canvas-area" id="crop-canvas-area">
+                <img class="crop-editor__image" id="crop-image" alt="Image to crop" draggable="false">
+            </div>
+            <div class="crop-editor__info" role="status" aria-live="polite">
+                <span id="crop-dimensions">Select area to crop</span>
+            </div>
+        </div>
+        <div class="modal__footer">
+            <button class="btn btn--ghost" id="crop-cancel" type="button">Cancel</button>
+            <button class="btn btn--primary" id="crop-apply" type="button">Apply Crop</button>
         </div>
     </div>
 </div>
