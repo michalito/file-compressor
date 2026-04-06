@@ -46,14 +46,20 @@ pip install -r requirements.txt
 
 ### Testing
 
-No test suite exists yet. pytest is in requirements.txt. When implementing tests, create a `tests/` directory. Do not run test commands without confirming with the user first.
+```bash
+pytest                       # Run all tests
+pytest tests/test_crop.py    # Run a single test file
+pytest -k test_crop_jpeg     # Run a specific test by name
+```
+
+Test fixtures in `tests/conftest.py`: `app` (test config, CSRF disabled), `client` (test client), `auth_client` (pre-authenticated session). pytest config in `pyproject.toml`.
 
 ## Architecture Overview
 
 ### Application Structure
 
 - `app/__init__.py`: App factory — config, CSRF, auth, rate limiting. Rate limits applied to `app.view_functions` after blueprint registration (not at import time).
-- `app/routes.py`: Single blueprint with endpoints: `/login`, `/logout`, `/` (index), `/process`, `/download`, `/theme`
+- `app/routes.py`: Single blueprint with endpoints: `/login`, `/logout`, `/` (index), `/process`, `/crop`, `/download`, `/theme`
 - `app/auth.py`: Auth class with `login_required` decorator, thread-safe brute-force protection (5 attempts → 5-min lockout), Flask-Limiter integration
 - `app/validators.py`: Centralized validation — returns `(is_valid, error_message)` tuples
 - `app/compression/image_processor.py`: ImageCompressor class with three modes, ValidationResult dataclass, watermark support
@@ -76,6 +82,14 @@ The UI labels differ from the internal code identifiers:
 3. Output encoded as base64 string in JSON response
 4. Client stores base64 in memory; `/download` decodes back to binary via `base64.b64decode()`
 
+### Crop Feature
+
+Post-processing crop via `/crop` endpoint — operates on already-compressed base64 data, not original uploads:
+- `ImageCompressor.crop_image()` validates bounds, crops, re-encodes in original format (preserves RGBA transparency for PNG/WebP)
+- Route validates via `validate_crop_coordinates()` then `validate_image()` before cropping
+- Frontend: `js/features/crop.js` (crop UI/state), `js/features/crop-interaction.js` (drag/resize interaction)
+- Pipeline supports chaining: `/process` → `/crop` → `/crop` (successive crops) or `/crop` → `/process` (reprocess cropped result)
+
 ### Watermark Feature
 
 Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
@@ -92,7 +106,7 @@ Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
 - State: `js/state/app-state.js` — reactive store, persists settings to localStorage
 - Lib: `js/lib/` — `api.js` (fetch+CSRF), `dom.js` (safe DOM helpers, SVG icons), `events.js` (pub/sub), `storage.js`
 - Components: `js/components/` — theme, toast, modal (focus trap), progress
-- Features: `js/features/` — upload, settings (tool registry), image-tile, batch (queue+ZIP), login
+- Features: `js/features/` — upload, settings (tool registry), image-tile, batch (queue+ZIP), login, crop + crop-interaction
 - CSS: design tokens (`tokens.css`), BEM naming, component files in `css/components/`, page files in `css/pages/`
 - SVG sprite sheet in `base.html` (Lucide-style icons)
 - UX flow: Upload → Auto-Process → Download (no manual Process button)
@@ -107,11 +121,11 @@ Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
 
 **Authentication**: Auth class initialized in app factory as `app.auth`. Routes use `@current_app.auth.login_required`. Session-based with `session.permanent = True` (required for 30-min `PERMANENT_SESSION_LIFETIME`). Thread-safe login tracking via `threading.Lock`.
 
-**Rate Limiting**: Flask-Limiter decorators can't be applied at blueprint import time — must wrap `app.view_functions` after registration. See `__init__.py` lines 88–91. Limits: `/login` 10/min, `/process` 30/min, `/download` 120/min.
+**Rate Limiting**: Flask-Limiter decorators can't be applied at blueprint import time — must wrap `app.view_functions` after registration. See `__init__.py` lines 96–100. Limits: `/login` 10/min, `/process` 30/min, `/crop` 30/min, `/download` 120/min.
 
 **Validation**: Two layers: file-level (validators.py returns tuples) then image-level (ImageCompressor returns ValidationResult dataclass with optional `.image` to avoid reopening). Warnings logged but don't block processing.
 
-**Error Handling**: Custom exceptions in image_processor.py (CompressionError, FileSizeError, FormatError). RateLimitExceeded in auth.py — must NOT be inside a broad `except Exception` or it gets swallowed. Routes return generic errors to client, log details server-side.
+**Error Handling**: Custom exceptions in image_processor.py (ImageValidationError, CompressionError, FileSizeError, FormatError). RateLimitExceeded in auth.py — must NOT be inside a broad `except Exception` or it gets swallowed. Routes return generic errors to client, log details server-side.
 
 **State & Re-processing**: Frontend `processedWithSettings` snapshot compared to current settings triggers re-process detection. Auto-process fires via `files:autoProcess` event at end of `handleFiles()`.
 
@@ -124,7 +138,7 @@ Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
 | Max file size | 50MB (`MAX_CONTENT_LENGTH` in `__init__.py`) |
 | Session timeout | 30 min (`PERMANENT_SESSION_LIFETIME`) |
 | CSRF token expiry | 1 hour (`WTF_CSRF_TIME_LIMIT`) |
-| Large image warning | 40M pixels |
+| Max pixel count | 40M pixels (rejected) |
 | Max dimensions | 10,000 px per side |
 | Supported input | JPG, PNG, WebP, TIFF |
 | Output formats | Lossless preserves original; Balanced/Maximum → JPEG (default) or WebP |

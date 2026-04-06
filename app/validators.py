@@ -189,13 +189,8 @@ def validate_download_data(compressed_data: str, filename: str) -> Tuple[bool, O
     if not filename:
         return False, "Filename is required"
 
-    # Validate base64: must have even length divisible by 4 and contain only valid chars
+    # Quick structural check — the route's b64decode() catches actual corruption
     if len(compressed_data) % 4 != 0:
-        return False, "Invalid compressed data format"
-
-    # Check a sample for valid base64 characters
-    sample = compressed_data[:200]
-    if not re.match(r'^[A-Za-z0-9+/=]+$', sample):
         return False, "Invalid compressed data format"
 
     # Check filename

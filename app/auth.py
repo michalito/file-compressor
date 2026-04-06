@@ -21,7 +21,14 @@ class Auth:
             self.init_app(app)
 
     def init_app(self, app):
-        """Initialize the auth extension with the app"""
+        """Initialize the auth extension with the app.
+
+        NOTE: Rate limiting and login attempt tracking are in-memory only.
+        This means they reset on server restart and are not shared across
+        Gunicorn workers. This is an acceptable trade-off for a single-user
+        self-hosted app. For multi-user deployments, switch storage_uri
+        to a Redis or Memcached backend.
+        """
         self.app = app
         self.limiter = Limiter(
             app=app,
@@ -29,7 +36,7 @@ class Auth:
             storage_uri="memory://"
         )
 
-        # Store failed attempts (protected by _lock)
+        # Store failed attempts (protected by _lock) — in-memory, per-worker
         self.login_attempts = {}
         self.max_attempts = 5
         self.lockout_time = 300  # 5 minutes
@@ -60,6 +67,10 @@ class Auth:
 
             if is_valid:
                 current_app.logger.info(f"Successful login from {ip}")
+                # Clear pre-login session data to prevent session fixation.
+                # For cookie-based sessions this is sufficient; server-side
+                # session backends would also need ID regeneration.
+                session.clear()
                 session['authenticated'] = True
                 session.permanent = True
                 self._reset_attempts(ip)

@@ -1,7 +1,6 @@
 Flask==3.1.0
 Pillow==11.1.0
 Flask-WTF==1.2.2
-pytest==8.3.4
 python-dotenv==1.0.1
 gunicorn==23.0.0
 flask-limiter==3.10.0

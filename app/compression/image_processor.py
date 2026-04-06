@@ -2,6 +2,7 @@ from PIL import Image, ImageOps, ImageCms, ImageDraw, ImageFont
 import io
 import logging
 from pathlib import Path
+from functools import lru_cache
 from typing import Tuple, Dict, Optional, List
 from dataclasses import dataclass
 
@@ -38,7 +39,7 @@ class ValidationResult:
 
 class ImageCompressor:
     _FONT_PATH = Path(__file__).parent / 'fonts' / 'Inter-SemiBold.ttf'
-    _font_cache: Dict[int, ImageFont.FreeTypeFont] = {}
+    MAX_PIXELS = 40_000_000  # ~8000×5000 — reject to prevent decompression bombs
 
     def __init__(self, max_file_size_mb: int = 10):
         self.max_file_size = max_file_size_mb * 1024 * 1024  # Convert MB to bytes
@@ -48,12 +49,11 @@ class ImageCompressor:
             'high': self._compress_high
         }
 
-    @classmethod
-    def _get_font(cls, size: int) -> ImageFont.FreeTypeFont:
-        """Lazily load and cache font at the given pixel size."""
-        if size not in cls._font_cache:
-            cls._font_cache[size] = ImageFont.truetype(str(cls._FONT_PATH), size)
-        return cls._font_cache[size]
+    @staticmethod
+    @lru_cache(maxsize=32)
+    def _get_font(size: int) -> ImageFont.FreeTypeFont:
+        """Load and cache font at the given pixel size (thread-safe via lru_cache)."""
+        return ImageFont.truetype(str(ImageCompressor._FONT_PATH), size)
 
     def _apply_watermark(self, img: Image.Image, text: str, position: str = 'bottom-right',
                          opacity: int = 50, color: str = 'white',
@@ -324,10 +324,13 @@ class ImageCompressor:
             if img.format not in ['JPEG', 'PNG', 'WEBP', 'TIFF']:
                 errors.append(f"Unsupported image format: {img.format}")
 
-            # Check dimensions
+            # Reject decompression bombs
             width, height = img.size
-            if width * height > 40000000:  # e.g., larger than 8000x5000
-                warnings.append("Image dimensions are very large and may require significant processing time")
+            if width * height > self.MAX_PIXELS:
+                errors.append(
+                    f"Image dimensions too large ({width}x{height}). "
+                    f"Maximum is {self.MAX_PIXELS:,} pixels"
+                )
 
             # Check color mode
             if img.mode not in ['RGB', 'RGBA', 'L']:
