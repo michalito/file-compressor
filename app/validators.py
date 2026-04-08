@@ -11,7 +11,7 @@ from werkzeug.datastructures import FileStorage
 MAX_FILENAME_LENGTH = 255
 MAX_DIMENSION = 10000  # Maximum width/height in pixels
 MIN_DIMENSION = 1
-ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'tiff'}
+ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'tiff', 'heic', 'heif'}
 ALLOWED_COMPRESSION_MODES = {'lossless', 'web', 'high'}
 ALLOWED_RESIZE_MODES = {'original', 'custom'}
 ALLOWED_THEMES = {'light', 'dark'}

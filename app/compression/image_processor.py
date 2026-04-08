@@ -320,6 +320,12 @@ class ImageCompressor:
             if img.format == 'MPO':
                 img.format = 'JPEG'
 
+            # HEIF/HEIC: remap to PNG for lossless pixel preservation
+            # (pillow-heif decodes to standard RGB/RGBA; we never output HEIF)
+            if img.format == 'HEIF':
+                img._source_format = 'HEIF'
+                img.format = 'PNG'
+
             # Check format
             if img.format not in ['JPEG', 'PNG', 'WEBP', 'TIFF']:
                 errors.append(f"Unsupported image format: {img.format}")
@@ -577,8 +583,14 @@ class ImageCompressor:
         # Use preloaded image if available, otherwise open it
         if preloaded_image is not None:
             img = preloaded_image
+            # Capture true source format before transforms may discard it
+            source_format = getattr(img, '_source_format', None)
         else:
             img = Image.open(io.BytesIO(image_data))
+            # Remap non-native input formats (mirrors validate_image logic)
+            source_format = img.format if img.format == 'HEIF' else None
+            if img.format == 'HEIF':
+                img.format = 'PNG'
 
         # Apply EXIF orientation correction before anything else
         img = self._apply_exif_orientation(img)
@@ -681,7 +693,7 @@ class ImageCompressor:
             'final_dimensions': img.size,
             'compression_ratio': compression_ratio,
             'format': resolved_format,
-            'original_format': original_format,
+            'original_format': source_format or original_format,
             'format_warnings': format_warnings,
             'watermarked': watermark_applied,
         }

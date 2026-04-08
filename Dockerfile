@@ -7,6 +7,7 @@ WORKDIR /app
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libheif-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -23,6 +24,7 @@ WORKDIR /app
 # Install runtime dependencies and dos2unix
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libzbar0 \
+    libheif1 \
     dos2unix \
     && rm -rf /var/lib/apt/lists/*
 

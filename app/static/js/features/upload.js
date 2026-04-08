@@ -7,8 +7,8 @@ import { state, addFile } from '../state/app-state.js';
 import { showToast } from '../components/toast.js';
 import { createImageTile } from './image-tile.js';
 
-const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/tiff']);
-const ACCEPTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif']);
+const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/tiff', 'image/heic', 'image/heif']);
+const ACCEPTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif', '.heic', '.heif']);
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 export function initApp() {
@@ -181,7 +181,7 @@ function handleFiles(fileList) {
       ? rejected.map((n) => `"${n}"`).join(', ')
       : `${rejected.length} files`;
     showToast({
-      message: `${names} not supported. Use JPG, PNG, WebP, or TIFF.`,
+      message: `${names} not supported. Use JPG, PNG, WebP, TIFF, or HEIC.`,
       type: 'warning',
     });
   }

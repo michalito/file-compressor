@@ -2,11 +2,11 @@
 
 A self-hosted, password-protected web application for image compression and resizing. All processing happens in-memory on the server — no files are stored on disk.
 
-Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**
+Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**, **HEIC/HEIF**
 
 ## Features
 
-- **Three compression modes**: Lossless (preserves format and quality), Balanced (web-optimized), Maximum (smallest files)
+- **Three compression modes**: Lossless (preserves format and quality; HEIC converts to PNG), Balanced (web-optimized), Maximum (smallest files)
 - **Output format selection**: Auto, PNG, WebP, or JPEG
 - **Quality slider** (1–100) for fine-grained control in Balanced and Maximum modes
 - **Resize** with preset dimensions (Full HD, HD, Web) or custom width/height
@@ -147,7 +147,7 @@ Navigate to the app URL and enter the password configured via `APP_PASSWORD`. Yo
 ### 2. Upload Images
 
 - **Drag and drop** files onto the workspace, or click **Choose Images** to browse
-- Supported formats: JPG, PNG, WebP, TIFF
+- Supported formats: JPG, PNG, WebP, TIFF, HEIC/HEIF
 - Maximum file size: 50 MB per image (validated client-side before upload)
 - Unsupported or oversized files are rejected with a toast notification
 - You can add more files at any time using the **Add More** button or by dropping onto the workspace
@@ -159,12 +159,12 @@ The inline settings panel offers these controls:
 **Compression mode** (segmented control):
 | Mode | Description | JPEG Quality | WebP Quality |
 |------|-------------|:------------:|:------------:|
-| **Lossless** | Preserves original format and maximum quality | 95 | Lossless (effort 80) |
+| **Lossless** | Preserves original format and maximum quality (HEIC converts to PNG) | 95 | Lossless (effort 80) |
 | **Balanced** | Good quality, smaller files — strips EXIF metadata | 85 | 75 |
 | **Maximum** | Smallest files, noticeable quality loss — strips EXIF metadata | 60 | 40 |
 
 **Output format** (segmented control):
-- **Auto** — preserves original format in Lossless; uses JPEG in Balanced/Maximum
+- **Auto** — preserves original format in Lossless (HEIC converts to PNG); uses JPEG in Balanced/Maximum
 - **PNG** — lossless output, quality slider hidden
 - **WebP** — best compression ratio, preserves transparency
 - **JPEG** — universal compatibility, no transparency (transparent areas become white)
@@ -313,7 +313,7 @@ docker image prune -f  # Remove old images
 
 ### Input Validation
 - Filename sanitization and path traversal prevention
-- File extension whitelist (JPG, JPEG, PNG, WebP, TIFF only)
+- File extension whitelist (JPG, JPEG, PNG, WebP, TIFF, HEIC, HEIF)
 - Dimension bounds (1–10,000 px per side)
 - Quality bounds (1–100)
 - Base64 format validation on download requests
@@ -398,7 +398,7 @@ Requires a modern browser with ES module and `crypto.randomUUID()` support:
 
 ### File upload rejected
 
-- Supported formats: JPG, PNG, WebP, TIFF only (not HEIC, GIF, or BMP)
+- Supported formats: JPG, PNG, WebP, TIFF, HEIC/HEIF (not GIF or BMP)
 - Maximum size: 50 MB per file
 - Maximum dimensions: 10,000 px per side
 

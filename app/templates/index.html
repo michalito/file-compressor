@@ -11,7 +11,7 @@
 {% block content %}
 <div class="app-layout">
     <div class="workspace">
-        <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff,.tif" class="sr-only">
+        <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.webp,.tiff,.tif,.heic,.heif" class="sr-only">
 
         <!-- Workspace Toolbar (hidden until files added) -->
         <div class="workspace-toolbar is-hidden" id="workspace-toolbar">
@@ -92,7 +92,7 @@
                             <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="web">Balanced</button>
                             <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="high">Maximum</button>
                         </div>
-                        <p class="settings-panel__hint" id="compression-hint">Highest quality, preserves original format</p>
+                        <p class="settings-panel__hint" id="compression-hint">Highest quality, preserves original format (HEIC outputs as PNG)</p>
 
                         <div class="quality-slider is-hidden" id="quality-slider-group">
                             <div class="quality-slider__header">
@@ -242,7 +242,7 @@
                     </fieldset>
                 </div>
             </section>
-            <p class="workspace__empty-formats">JPG, PNG, WebP, TIFF &middot; Max 50 MB per file</p>
+            <p class="workspace__empty-formats">JPG, PNG, WebP, TIFF, HEIC &middot; Max 50 MB per file</p>
         </div>
 
         <!-- Image Grid -->

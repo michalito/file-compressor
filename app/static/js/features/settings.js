@@ -12,7 +12,7 @@ import { state, updateSettings, getSettings } from '../state/app-state.js';
 const PANEL_EXPANDED_KEY = 'compressify_panel_expanded';
 
 const MODE_HINTS = {
-  lossless: 'Highest quality, preserves original format',
+  lossless: 'Highest quality, preserves original format (HEIC outputs as PNG)',
   web: 'Great quality, ~40\u201370% smaller files',
   high: 'Smallest files, noticeable quality loss',
 };

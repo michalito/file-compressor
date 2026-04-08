@@ -125,6 +125,8 @@ Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
 
 **Validation**: Two layers: file-level (validators.py returns tuples) then image-level (ImageCompressor returns ValidationResult dataclass with optional `.image` to avoid reopening). Warnings logged but don't block processing.
 
+**Format Remapping**: Non-native input formats are remapped early in `validate_image()`: MPO → JPEG (smartphone multi-picture objects), HEIF → PNG (Apple HEIC photos). This avoids handling these formats in every downstream code path. Requires `pillow-heif` (`register_heif_opener()` in `app/compression/__init__.py`).
+
 **Error Handling**: Custom exceptions in image_processor.py (ImageValidationError, CompressionError, FileSizeError, FormatError). RateLimitExceeded in auth.py — must NOT be inside a broad `except Exception` or it gets swallowed. Routes return generic errors to client, log details server-side.
 
 **State & Re-processing**: Frontend `processedWithSettings` snapshot compared to current settings triggers re-process detection. Auto-process fires via `files:autoProcess` event at end of `handleFiles()`.
@@ -140,8 +142,8 @@ Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
 | CSRF token expiry | 1 hour (`WTF_CSRF_TIME_LIMIT`) |
 | Max pixel count | 40M pixels (rejected) |
 | Max dimensions | 10,000 px per side |
-| Supported input | JPG, PNG, WebP, TIFF |
-| Output formats | Lossless preserves original; Balanced/Maximum → JPEG (default) or WebP |
+| Supported input | JPG, PNG, WebP, TIFF, HEIC/HEIF |
+| Output formats | Lossless preserves original (HEIC → PNG); Balanced/Maximum → JPEG (default) or WebP |
 
 ## Deployment
 
