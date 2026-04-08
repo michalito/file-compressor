@@ -21,6 +21,7 @@ MAX_QUALITY = 100
 MAX_WATERMARK_LENGTH = 50
 ALLOWED_WATERMARK_POSITIONS = {'bottom-right', 'bottom-left', 'top-right', 'top-left', 'center', 'tiled'}
 ALLOWED_WATERMARK_COLORS = {'white', 'black', 'auto'}
+ALLOWED_ROTATIONS = {0, 90, 180, 270}
 
 
 def validate_file(file: FileStorage) -> Tuple[bool, Optional[str]]:
@@ -278,6 +279,25 @@ def validate_crop_coordinates(x: int, y: int, width: int, height: int,
 
     if y + height > image_height:
         return False, "Crop region exceeds image height"
+
+    return True, None
+
+
+def validate_rotation(rotation: int) -> Tuple[bool, Optional[str]]:
+    """
+    Validate rotation angle.
+
+    Args:
+        rotation: Rotation angle in degrees (clockwise)
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not isinstance(rotation, int) or isinstance(rotation, bool):
+        return False, "Rotation must be an integer"
+
+    if rotation not in ALLOWED_ROTATIONS:
+        return False, f"Rotation must be one of {sorted(ALLOWED_ROTATIONS)}"
 
     return True, None
 

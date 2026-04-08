@@ -39,11 +39,15 @@ bus.on('file:cropped', ({ fileId, metadata }) => {
     if (img) img.src = entry.blobUrl;
   }
 
-  // Add Cropped badge if not already present
+  // Add badge reflecting what changed (skip if already present)
   const badges = tile.querySelector('.tile__status-badges');
-  if (badges && !badges.querySelector('.badge--cropped')) {
-    const croppedBadge = createElement('span', { class: 'badge badge--info badge--cropped' }, 'Cropped');
-    badges.appendChild(croppedBadge);
+  if (badges) {
+    if (metadata.cropped && !badges.querySelector('.badge--cropped')) {
+      badges.appendChild(createElement('span', { class: 'badge badge--info badge--cropped' }, 'Cropped'));
+    }
+    if (metadata.rotated && !badges.querySelector('.badge--rotated')) {
+      badges.appendChild(createElement('span', { class: 'badge badge--info badge--rotated' }, 'Rotated'));
+    }
   }
 
   // Show Reset button
@@ -195,6 +199,8 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
     if (cancelledBadge) cancelledBadge.remove();
     const croppedBadge = tile.querySelector('.badge--cropped');
     if (croppedBadge) croppedBadge.remove();
+    const rotatedBadge = tile.querySelector('.badge--rotated');
+    if (rotatedBadge) rotatedBadge.remove();
     tile.querySelectorAll('.tile__warning').forEach((el) => el.remove());
     if (!skipGlobalProgress) {
       globalProgress.show();

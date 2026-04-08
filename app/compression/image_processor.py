@@ -747,16 +747,52 @@ class ImageCompressor:
 
         cropped_data = output.getvalue()
 
+        is_full_image = (x == 0 and y == 0 and width == img_w and height == img_h)
         metadata = {
             'original_size': original_size,
             'compressed_size': len(cropped_data),
             'original_dimensions': original_dimensions,
             'final_dimensions': (width, height),
             'format': resolved_format,
-            'cropped': True,
+            'cropped': not is_full_image,
         }
 
         return cropped_data, metadata
+
+    def rotate_image(self, img: Image.Image, angle: int) -> Image.Image:
+        """
+        Rotate an image by 90-degree increments (clockwise).
+        Uses Image.transpose() for lossless rotation without interpolation.
+
+        Args:
+            img: PIL Image object
+            angle: Rotation angle (0, 90, 180, 270) in degrees clockwise
+
+        Returns:
+            Rotated PIL Image object with format preserved
+        """
+        if angle == 0:
+            return img
+
+        original_format = img.format
+
+        # PIL's transpose rotates counter-clockwise, so we invert:
+        # CW 90  -> PIL ROTATE_270
+        # CW 180 -> PIL ROTATE_180
+        # CW 270 -> PIL ROTATE_90
+        transpose_map = {
+            90: Image.Transpose.ROTATE_270,
+            180: Image.Transpose.ROTATE_180,
+            270: Image.Transpose.ROTATE_90,
+        }
+
+        operation = transpose_map.get(angle)
+        if operation is None:
+            raise ImageValidationError(f"Invalid rotation angle: {angle}")
+
+        rotated = img.transpose(operation)
+        rotated.format = original_format
+        return rotated
 
     def _resize_image(self, img: Image.Image, max_width: Optional[int], max_height: Optional[int]) -> Image.Image:
         """Resize image maintaining aspect ratio"""

@@ -9,7 +9,7 @@ from .validators import (
     validate_file, validate_compression_mode, validate_resize_mode,
     validate_dimensions, validate_quality, validate_output_format,
     validate_theme, validate_download_data, validate_crop_coordinates,
-    sanitize_filename,
+    validate_rotation, sanitize_filename,
     validate_watermark_text, validate_watermark_position, validate_watermark_options
 )
 from .forms import LoginForm
@@ -280,7 +280,7 @@ def download_file():
 @main.route('/crop', methods=['POST'])
 @current_app.auth.login_required
 def crop_image():
-    """Crop an already-processed image using pixel coordinates."""
+    """Crop and/or rotate an already-processed image."""
     try:
         data = request.json
         if not data:
@@ -290,8 +290,19 @@ def crop_image():
         filename = data.get('filename', '')
         crop = data.get('crop') or {}
 
+        # Extract optional rotation (defaults to 0 for backward compatibility)
+        try:
+            rotation = int(data.get('rotation', 0))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid rotation value'}), 400
+
         # Validate base64 data and filename
         is_valid, error_msg = validate_download_data(compressed_data_str, filename)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        # Validate rotation angle
+        is_valid, error_msg = validate_rotation(rotation)
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
@@ -318,18 +329,31 @@ def crop_image():
                 'details': validation.errors,
             }), 400
 
-        img_w, img_h = validation.image.size
+        img = validation.image
+        pre_rotation_dims = img.size
 
-        # Validate crop coordinates against actual image dimensions
+        # Apply rotation before crop (coordinates are relative to rotated image)
+        if rotation != 0:
+            img = compressor.rotate_image(img, rotation)
+
+        img_w, img_h = img.size
+
+        # Validate crop coordinates against (possibly rotated) image dimensions
         is_valid, error_msg = validate_crop_coordinates(
             crop_x, crop_y, crop_w, crop_h, img_w, img_h)
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        # Perform the crop, reusing the already-opened image
+        # Perform the crop, reusing the (possibly rotated) image
         cropped_data, metadata = compressor.crop_image(
             image_bytes, crop_x, crop_y, crop_w, crop_h,
-            preloaded_image=validation.image)
+            preloaded_image=img)
+
+        # When rotation was applied, crop_image records the rotated image's
+        # dimensions as original_dimensions.  Fix it to reflect the actual
+        # input so the API response is self-consistent for any caller.
+        if rotation != 0:
+            metadata['original_dimensions'] = pre_rotation_dims
 
         # Encode result as base64
         b64_data = base64.b64encode(cropped_data).decode('ascii')
@@ -342,6 +366,7 @@ def crop_image():
             'filename': filename,
             'metadata': {
                 **metadata,
+                'rotated': rotation != 0,
                 'encoding': 'base64',
             },
         }), 200

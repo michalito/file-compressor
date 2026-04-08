@@ -14,7 +14,15 @@
 /* Toolbar */
 .crop-editor__toolbar {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: var(--space-3);
+}
+
+/* Rotate controls */
+.crop-editor__rotate-controls {
+  display: flex;
+  gap: var(--space-1);
 }
 
 /* Canvas area — contains the image and crop overlay */
@@ -226,6 +234,10 @@
 
   .crop-editor__image {
     max-height: 50vh;
+  }
+
+  .crop-editor__toolbar {
+    flex-wrap: wrap;
   }
 
   .crop-editor__toolbar .segmented-control {
