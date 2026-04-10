@@ -1,6 +1,6 @@
 /**
  * Crop interaction engine: DOM-based overlay with draggable selection and resize handles.
- * Uses pointer events for unified mouse + touch support.
+ * Uses normalized image-relative coordinates so the selection survives layout changes.
  */
 
 const MIN_SIZE = 10; // Minimum crop selection in display pixels
@@ -21,10 +21,10 @@ export class CropInteraction {
     this._onChange = onChange;
     this._aspectRatio = null;
 
-    // Selection in display pixels (relative to image position within container)
-    this._sel = { x: 0, y: 0, width: 0, height: 0 };
+    // Selection in normalized image space (0..1)
+    this._sel = { x: 0, y: 0, width: 1, height: 1 };
 
-    // Drag state
+    // Drag state in display pixels
     this._dragging = null; // null | 'move' | 'create' | handle name (nw, n, ne, e, se, s, sw, w)
     this._dragStart = { x: 0, y: 0 };
     this._dragSelStart = { x: 0, y: 0, width: 0, height: 0 };
@@ -35,33 +35,27 @@ export class CropInteraction {
 
     this._buildDOM();
     this._bindEvents();
-
-    // Initialize selection to full image after it has been laid out
     this._initSelection();
   }
 
-  /** Build the overlay DOM elements */
   _buildDOM() {
-    // Overlay regions (dark areas around selection)
     this._overlayTop = this._makeDiv('crop-editor__overlay-top');
     this._overlayBottom = this._makeDiv('crop-editor__overlay-bottom');
     this._overlayLeft = this._makeDiv('crop-editor__overlay-left');
     this._overlayRight = this._makeDiv('crop-editor__overlay-right');
 
-    // Selection rectangle
     this._selEl = this._makeDiv('crop-editor__selection');
     this._selEl.setAttribute('role', 'application');
     this._selEl.setAttribute('aria-label', 'Crop selection. Use arrow keys to move, Shift+arrow to resize.');
     this._selEl.setAttribute('tabindex', '0');
 
-    // 8 handles
     const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
     this._handles = {};
     for (const dir of handles) {
-      const h = this._makeDiv(`crop-editor__handle crop-editor__handle--${dir}`);
-      h.dataset.handle = dir;
-      this._handles[dir] = h;
-      this._selEl.appendChild(h);
+      const handle = this._makeDiv(`crop-editor__handle crop-editor__handle--${dir}`);
+      handle.dataset.handle = dir;
+      this._handles[dir] = handle;
+      this._selEl.appendChild(handle);
     }
 
     this._container.appendChild(this._overlayTop);
@@ -77,7 +71,6 @@ export class CropInteraction {
     return el;
   }
 
-  /** Get the image's bounding rect relative to the container */
   _getImageRect() {
     const cRect = this._container.getBoundingClientRect();
     const iRect = this._image.getBoundingClientRect();
@@ -89,116 +82,146 @@ export class CropInteraction {
     };
   }
 
-  /** Initialize selection to full image */
   _initSelection() {
-    const ir = this._getImageRect();
-    this._sel = { x: 0, y: 0, width: ir.width, height: ir.height };
+    this._sel = { x: 0, y: 0, width: 1, height: 1 };
     this._render();
     this._notify();
   }
 
-  /** Reset selection to full image, applying aspect ratio if set */
   reset() {
     const ir = this._getImageRect();
     if (this._aspectRatio) {
-      const { width, height } = this._fitRatio(ir.width, ir.height, this._aspectRatio);
-      this._sel = {
-        x: (ir.width - width) / 2,
-        y: (ir.height - height) / 2,
-        width,
-        height,
-      };
+      const fitted = this._fitRatio(ir.width, ir.height, this._aspectRatio);
+      this._setFromDisplayRect({
+        x: (ir.width - fitted.width) / 2,
+        y: (ir.height - fitted.height) / 2,
+        width: fitted.width,
+        height: fitted.height,
+      }, ir);
     } else {
-      this._sel = { x: 0, y: 0, width: ir.width, height: ir.height };
+      this._sel = { x: 0, y: 0, width: 1, height: 1 };
     }
+
     this._render();
     this._notify();
   }
 
-  /** Set aspect ratio constraint. null = freeform. */
   setAspectRatio(ratio) {
     this._aspectRatio = ratio;
     if (ratio) {
-      // Constrain current selection to new ratio
       this._constrainToRatio();
       this._render();
       this._notify();
     }
   }
 
-  /** Constrain the current selection to the aspect ratio, centered */
   _constrainToRatio() {
     const ir = this._getImageRect();
-    const { x, y, width, height } = this._sel;
-    const cx = x + width / 2;
-    const cy = y + height / 2;
+    const sel = this._getDisplaySelection(ir);
+    const cx = sel.x + sel.width / 2;
+    const cy = sel.y + sel.height / 2;
 
-    let newW, newH;
+    let width = sel.width;
+    let height = sel.height;
+
     if (width / height > this._aspectRatio) {
-      newH = height;
-      newW = height * this._aspectRatio;
+      width = height * this._aspectRatio;
     } else {
-      newW = width;
-      newH = width / this._aspectRatio;
+      height = width / this._aspectRatio;
     }
 
-    // Fit within image bounds
     const fitted = this._fitRatio(
-      Math.min(newW, ir.width),
-      Math.min(newH, ir.height),
+      Math.min(width, ir.width),
+      Math.min(height, ir.height),
       this._aspectRatio
     );
-    newW = fitted.width;
-    newH = fitted.height;
 
-    let newX = cx - newW / 2;
-    let newY = cy - newH / 2;
-
-    // Clamp
-    newX = Math.max(0, Math.min(newX, ir.width - newW));
-    newY = Math.max(0, Math.min(newY, ir.height - newH));
-
-    this._sel = { x: newX, y: newY, width: newW, height: newH };
+    this._setFromDisplayRect({
+      x: cx - fitted.width / 2,
+      y: cy - fitted.height / 2,
+      width: fitted.width,
+      height: fitted.height,
+    }, ir);
   }
 
-  /** Fit dimensions to aspect ratio (shrink to fit) */
   _fitRatio(maxW, maxH, ratio) {
-    let w = maxW;
-    let h = w / ratio;
-    if (h > maxH) {
-      h = maxH;
-      w = h * ratio;
+    const minW = Math.min(MIN_SIZE, maxW);
+    const minH = Math.min(MIN_SIZE, maxH);
+
+    let width = maxW;
+    let height = width / ratio;
+    if (height > maxH) {
+      height = maxH;
+      width = height * ratio;
     }
-    return { width: Math.max(MIN_SIZE, w), height: Math.max(MIN_SIZE, h) };
-  }
 
-  /** Get selection in display coordinates (relative to image top-left) */
-  getSelection() {
-    return { ...this._sel };
-  }
-
-  /** Get selection in actual image pixel coordinates */
-  getImageCoordinates() {
-    const ir = this._getImageRect();
-    const natW = this._image.naturalWidth;
-    const natH = this._image.naturalHeight;
-    const scaleX = natW / ir.width;
-    const scaleY = natH / ir.height;
     return {
-      x: Math.max(0, Math.round(this._sel.x * scaleX)),
-      y: Math.max(0, Math.round(this._sel.y * scaleY)),
-      width: Math.min(natW, Math.max(1, Math.round(this._sel.width * scaleX))),
-      height: Math.min(natH, Math.max(1, Math.round(this._sel.height * scaleY))),
+      width: Math.min(maxW, Math.max(minW, width)),
+      height: Math.min(maxH, Math.max(minH, height)),
     };
   }
 
-  /** Bind pointer and keyboard events */
+  _getDisplaySelection(ir = this._getImageRect()) {
+    return {
+      x: this._sel.x * ir.width,
+      y: this._sel.y * ir.height,
+      width: this._sel.width * ir.width,
+      height: this._sel.height * ir.height,
+    };
+  }
+
+  _setFromDisplayRect(rect, ir = this._getImageRect()) {
+    if (ir.width <= 0 || ir.height <= 0) return;
+
+    const minW = Math.min(MIN_SIZE, ir.width);
+    const minH = Math.min(MIN_SIZE, ir.height);
+
+    let width = Math.min(ir.width, Math.max(minW, rect.width));
+    let height = Math.min(ir.height, Math.max(minH, rect.height));
+    let x = Math.max(0, Math.min(rect.x, ir.width - width));
+    let y = Math.max(0, Math.min(rect.y, ir.height - height));
+
+    if (x + width > ir.width) x = ir.width - width;
+    if (y + height > ir.height) y = ir.height - height;
+
+    this._sel = {
+      x: ir.width ? x / ir.width : 0,
+      y: ir.height ? y / ir.height : 0,
+      width: ir.width ? width / ir.width : 1,
+      height: ir.height ? height / ir.height : 1,
+    };
+  }
+
+  getSelection() {
+    return this._getDisplaySelection();
+  }
+
+  getImageCoordinates() {
+    const natW = this._image.naturalWidth;
+    const natH = this._image.naturalHeight;
+
+    const x = Math.max(0, Math.round(this._sel.x * natW));
+    const y = Math.max(0, Math.round(this._sel.y * natH));
+    const width = Math.max(1, Math.round(this._sel.width * natW));
+    const height = Math.max(1, Math.round(this._sel.height * natH));
+
+    return {
+      x: Math.min(x, natW - 1),
+      y: Math.min(y, natH - 1),
+      width: Math.min(width, natW - x),
+      height: Math.min(height, natH - y),
+    };
+  }
+
   _bindEvents() {
     this._onPointerDown = this._handlePointerDown.bind(this);
     this._onPointerMove = this._handlePointerMove.bind(this);
     this._onPointerUp = this._handlePointerUp.bind(this);
     this._onKeyDown = this._handleKeyDown.bind(this);
-    this._onResize = () => this._scheduleRender();
+    this._onResize = () => {
+      this._render();
+      this._notify();
+    };
 
     this._container.addEventListener('pointerdown', this._onPointerDown);
     window.addEventListener('pointermove', this._onPointerMove);
@@ -207,19 +230,23 @@ export class CropInteraction {
     window.addEventListener('resize', this._onResize);
   }
 
+  _getPointerInImage(e, ir) {
+    const containerRect = this._container.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(e.clientX - containerRect.left - ir.x, ir.width)),
+      y: Math.max(0, Math.min(e.clientY - containerRect.top - ir.y, ir.height)),
+    };
+  }
+
   _handlePointerDown(e) {
     e.preventDefault();
     const ir = this._getImageRect();
-    // Clamp pointer to image bounds
-    const rawX = e.clientX - this._container.getBoundingClientRect().left - ir.x;
-    const rawY = e.clientY - this._container.getBoundingClientRect().top - ir.y;
-    const px = Math.max(0, Math.min(rawX, ir.width));
-    const py = Math.max(0, Math.min(rawY, ir.height));
+    const point = this._getPointerInImage(e, ir);
+    const displaySel = this._getDisplaySelection(ir);
 
-    this._dragStart = { x: px, y: py };
-    this._dragSelStart = { ...this._sel };
+    this._dragStart = point;
+    this._dragSelStart = { ...displaySel };
 
-    // Check if we hit a handle
     const handle = e.target.closest('[data-handle]');
     if (handle) {
       this._dragging = handle.dataset.handle;
@@ -227,18 +254,16 @@ export class CropInteraction {
       return;
     }
 
-    // Check if we hit the selection body
-    const { x, y, width, height } = this._sel;
-    if (px >= x && px <= x + width && py >= y && py <= y + height) {
+    const { x, y, width, height } = displaySel;
+    if (point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height) {
       this._dragging = 'move';
       this._container.setPointerCapture(e.pointerId);
       return;
     }
 
-    // Click on empty area — start drawing a new selection
-    this._sel = { x: px, y: py, width: 0, height: 0 };
     this._dragging = 'create';
-    this._createAnchor = { x: px, y: py };
+    this._createAnchor = point;
+    this._setFromDisplayRect({ x: point.x, y: point.y, width: 0, height: 0 }, ir);
     this._container.setPointerCapture(e.pointerId);
   }
 
@@ -247,18 +272,14 @@ export class CropInteraction {
     e.preventDefault();
 
     const ir = this._getImageRect();
-    const rawPx = e.clientX - this._container.getBoundingClientRect().left - ir.x;
-    const rawPy = e.clientY - this._container.getBoundingClientRect().top - ir.y;
-    const px = Math.max(0, Math.min(rawPx, ir.width));
-    const py = Math.max(0, Math.min(rawPy, ir.height));
-
-    const dx = px - this._dragStart.x;
-    const dy = py - this._dragStart.y;
+    const point = this._getPointerInImage(e, ir);
+    const dx = point.x - this._dragStart.x;
+    const dy = point.y - this._dragStart.y;
 
     if (this._dragging === 'move') {
       this._handleMove(dx, dy, ir);
     } else if (this._dragging === 'create') {
-      this._handleCreate(px, py, ir);
+      this._handleCreate(point.x, point.y, ir);
     } else {
       this._handleResize(this._dragging, dx, dy, ir);
     }
@@ -266,203 +287,206 @@ export class CropInteraction {
     this._scheduleRender();
   }
 
-  _handlePointerUp(e) {
+  _handlePointerUp() {
     if (!this._dragging) return;
     this._dragging = null;
-
-    const ir = this._getImageRect();
-
-    // Ensure minimum size
-    if (this._sel.width < MIN_SIZE) this._sel.width = MIN_SIZE;
-    if (this._sel.height < MIN_SIZE) this._sel.height = MIN_SIZE;
-
-    // Clamp so the selection stays within the image
-    if (this._sel.x + this._sel.width > ir.width) {
-      this._sel.x = Math.max(0, ir.width - this._sel.width);
-    }
-    if (this._sel.y + this._sel.height > ir.height) {
-      this._sel.y = Math.max(0, ir.height - this._sel.height);
-    }
-
     this._render();
     this._notify();
   }
 
   _handleMove(dx, dy, ir) {
-    let newX = this._dragSelStart.x + dx;
-    let newY = this._dragSelStart.y + dy;
-    const { width, height } = this._dragSelStart;
+    const sel = this._dragSelStart;
 
-    // Clamp to image bounds
-    newX = Math.max(0, Math.min(newX, ir.width - width));
-    newY = Math.max(0, Math.min(newY, ir.height - height));
-
-    this._sel = { x: newX, y: newY, width, height };
+    this._setFromDisplayRect({
+      x: sel.x + dx,
+      y: sel.y + dy,
+      width: sel.width,
+      height: sel.height,
+    }, ir);
   }
 
   _handleCreate(px, py, ir) {
     const ax = this._createAnchor.x;
     const ay = this._createAnchor.y;
 
-    // Clamp pointer to image bounds
-    const cx = Math.max(0, Math.min(px, ir.width));
-    const cy = Math.max(0, Math.min(py, ir.height));
+    let x = Math.min(ax, px);
+    let y = Math.min(ay, py);
+    let width = Math.abs(px - ax);
+    let height = Math.abs(py - ay);
 
-    // Build rect from anchor and current pointer — works in all four directions
-    let x = Math.min(ax, cx);
-    let y = Math.min(ay, cy);
-    let w = Math.abs(cx - ax);
-    let h = Math.abs(cy - ay);
-
-    // Apply aspect ratio constraint
     if (this._aspectRatio) {
-      if (w / (h || 1) > this._aspectRatio) {
-        w = h * this._aspectRatio;
+      if (width / (height || 1) > this._aspectRatio) {
+        width = height * this._aspectRatio;
       } else {
-        h = w / this._aspectRatio;
+        height = width / this._aspectRatio;
       }
-      // Re-anchor: if pointer is left/above anchor, adjust origin
-      x = cx < ax ? ax - w : ax;
-      y = cy < ay ? ay - h : ay;
+
+      x = px < ax ? ax - width : ax;
+      y = py < ay ? ay - height : ay;
     }
 
-    // Clamp to image bounds
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > ir.width) w = ir.width - x;
-    if (y + h > ir.height) h = ir.height - y;
+    if (x < 0) {
+      width += x;
+      x = 0;
+    }
+    if (y < 0) {
+      height += y;
+      y = 0;
+    }
+    if (x + width > ir.width) width = ir.width - x;
+    if (y + height > ir.height) height = ir.height - y;
 
-    // Re-fit ratio after clamping so both axes stay consistent
     if (this._aspectRatio) {
-      const fitted = this._fitRatio(w, h, this._aspectRatio);
-      w = fitted.width;
-      h = fitted.height;
+      const fitted = this._fitRatio(width, height, this._aspectRatio);
+      width = fitted.width;
+      height = fitted.height;
     }
 
-    this._sel = { x, y, width: Math.max(0, w), height: Math.max(0, h) };
+    this._setFromDisplayRect({ x, y, width, height }, ir);
   }
 
   _handleResize(handle, dx, dy, ir) {
-    const s = this._dragSelStart;
-    let x = s.x, y = s.y, w = s.width, h = s.height;
+    const sel = this._dragSelStart;
+    let x = sel.x;
+    let y = sel.y;
+    let width = sel.width;
+    let height = sel.height;
 
-    // Apply deltas based on which handle is being dragged
-    if (handle.includes('e')) {
-      w = s.width + dx;
-    }
+    if (handle.includes('e')) width = sel.width + dx;
     if (handle.includes('w')) {
-      x = s.x + dx;
-      w = s.width - dx;
+      x = sel.x + dx;
+      width = sel.width - dx;
     }
-    if (handle.includes('s')) {
-      h = s.height + dy;
-    }
+    if (handle.includes('s')) height = sel.height + dy;
     if (handle.includes('n')) {
-      y = s.y + dy;
-      h = s.height - dy;
+      y = sel.y + dy;
+      height = sel.height - dy;
     }
 
-    // Enforce minimum size
-    if (w < MIN_SIZE) {
-      if (handle.includes('w')) { x = s.x + s.width - MIN_SIZE; }
-      w = MIN_SIZE;
+    const minW = Math.min(MIN_SIZE, ir.width);
+    const minH = Math.min(MIN_SIZE, ir.height);
+
+    if (width < minW) {
+      if (handle.includes('w')) x = sel.x + sel.width - minW;
+      width = minW;
     }
-    if (h < MIN_SIZE) {
-      if (handle.includes('n')) { y = s.y + s.height - MIN_SIZE; }
-      h = MIN_SIZE;
+    if (height < minH) {
+      if (handle.includes('n')) y = sel.y + sel.height - minH;
+      height = minH;
     }
 
-    // Apply aspect ratio constraint
     if (this._aspectRatio) {
-      // Determine which axis drives the resize
       const isCorner = handle.length === 2;
       const isHorizontal = handle === 'e' || handle === 'w';
       const isVertical = handle === 'n' || handle === 's';
 
       if (isHorizontal || isCorner) {
-        h = w / this._aspectRatio;
-        // Re-adjust origin for top/left handles
+        height = width / this._aspectRatio;
         if (handle.includes('n')) {
-          y = s.y + s.height - h;
+          y = sel.y + sel.height - height;
         }
       } else if (isVertical) {
-        w = h * this._aspectRatio;
+        width = height * this._aspectRatio;
         if (handle.includes('w')) {
-          x = s.x + s.width - w;
+          x = sel.x + sel.width - width;
         }
       }
     }
 
-    // Clamp to image bounds
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > ir.width) { w = ir.width - x; }
-    if (y + h > ir.height) { h = ir.height - y; }
+    if (x < 0) {
+      width += x;
+      x = 0;
+    }
+    if (y < 0) {
+      height += y;
+      y = 0;
+    }
+    if (x + width > ir.width) width = ir.width - x;
+    if (y + height > ir.height) height = ir.height - y;
 
-    // If ratio-constrained and clamped, re-fit
     if (this._aspectRatio) {
-      const fitted = this._fitRatio(w, h, this._aspectRatio);
-      if (fitted.width < w) {
-        if (handle.includes('w')) { x = x + w - fitted.width; }
-        w = fitted.width;
+      const fitted = this._fitRatio(width, height, this._aspectRatio);
+      if (fitted.width < width && handle.includes('w')) {
+        x += width - fitted.width;
       }
-      if (fitted.height < h) {
-        if (handle.includes('n')) { y = y + h - fitted.height; }
-        h = fitted.height;
+      if (fitted.height < height && handle.includes('n')) {
+        y += height - fitted.height;
       }
+      width = fitted.width;
+      height = fitted.height;
     }
 
-    this._sel = { x, y, width: w, height: h };
+    this._setFromDisplayRect({ x, y, width, height }, ir);
   }
 
   _handleKeyDown(e) {
     const step = e.shiftKey ? 10 : 1;
     const ir = this._getImageRect();
+    const sel = this._getDisplaySelection(ir);
+    let next = { ...sel };
     let handled = true;
 
     if (e.shiftKey) {
-      // Shift+arrow: resize from current origin
-      const isHoriz = e.key === 'ArrowRight' || e.key === 'ArrowLeft';
+      const isHorizontal = e.key === 'ArrowRight' || e.key === 'ArrowLeft';
+
       switch (e.key) {
-        case 'ArrowRight': this._sel.width = Math.min(this._sel.width + step, ir.width - this._sel.x); break;
-        case 'ArrowLeft': this._sel.width = Math.max(MIN_SIZE, this._sel.width - step); break;
-        case 'ArrowDown': this._sel.height = Math.min(this._sel.height + step, ir.height - this._sel.y); break;
-        case 'ArrowUp': this._sel.height = Math.max(MIN_SIZE, this._sel.height - step); break;
-        default: handled = false;
+        case 'ArrowRight':
+          next.width = Math.min(sel.width + step, ir.width - sel.x);
+          break;
+        case 'ArrowLeft':
+          next.width = Math.max(Math.min(MIN_SIZE, ir.width), sel.width - step);
+          break;
+        case 'ArrowDown':
+          next.height = Math.min(sel.height + step, ir.height - sel.y);
+          break;
+        case 'ArrowUp':
+          next.height = Math.max(Math.min(MIN_SIZE, ir.height), sel.height - step);
+          break;
+        default:
+          handled = false;
       }
-      // Adjust complementary axis to maintain ratio, anchored at top-left
+
       if (handled && this._aspectRatio) {
-        if (isHoriz) {
-          this._sel.height = this._sel.width / this._aspectRatio;
+        if (isHorizontal) {
+          next.height = next.width / this._aspectRatio;
         } else {
-          this._sel.width = this._sel.height * this._aspectRatio;
+          next.width = next.height * this._aspectRatio;
         }
-        // Clamp to image bounds, then re-fit ratio if needed
-        this._sel.width = Math.min(this._sel.width, ir.width - this._sel.x);
-        this._sel.height = Math.min(this._sel.height, ir.height - this._sel.y);
-        const fitted = this._fitRatio(this._sel.width, this._sel.height, this._aspectRatio);
-        this._sel.width = fitted.width;
-        this._sel.height = fitted.height;
+
+        next.width = Math.min(next.width, ir.width - next.x);
+        next.height = Math.min(next.height, ir.height - next.y);
+
+        const fitted = this._fitRatio(next.width, next.height, this._aspectRatio);
+        next.width = fitted.width;
+        next.height = fitted.height;
       }
     } else {
-      // Arrow: move
       switch (e.key) {
-        case 'ArrowRight': this._sel.x = Math.min(this._sel.x + step, ir.width - this._sel.width); break;
-        case 'ArrowLeft': this._sel.x = Math.max(0, this._sel.x - step); break;
-        case 'ArrowDown': this._sel.y = Math.min(this._sel.y + step, ir.height - this._sel.height); break;
-        case 'ArrowUp': this._sel.y = Math.max(0, this._sel.y - step); break;
-        default: handled = false;
+        case 'ArrowRight':
+          next.x = Math.min(sel.x + step, ir.width - sel.width);
+          break;
+        case 'ArrowLeft':
+          next.x = Math.max(0, sel.x - step);
+          break;
+        case 'ArrowDown':
+          next.y = Math.min(sel.y + step, ir.height - sel.height);
+          break;
+        case 'ArrowUp':
+          next.y = Math.max(0, sel.y - step);
+          break;
+        default:
+          handled = false;
       }
     }
 
-    if (handled) {
-      e.preventDefault();
-      this._render();
-      this._notify();
-    }
+    if (!handled) return;
+
+    e.preventDefault();
+    this._setFromDisplayRect(next, ir);
+    this._render();
+    this._notify();
   }
 
-  /** Schedule a render via rAF */
   _scheduleRender() {
     if (this._dirty) return;
     this._dirty = true;
@@ -473,42 +497,32 @@ export class CropInteraction {
     });
   }
 
-  /** Update DOM positions of overlay and selection */
   _render() {
     const ir = this._getImageRect();
-    const { x, y, width, height } = this._sel;
-
-    // Position overlays relative to container (using image offset)
+    const sel = this._getDisplaySelection(ir);
     const imgX = ir.x;
     const imgY = ir.y;
 
-    // Top overlay: from image top to selection top
     this._overlayTop.style.cssText =
-      `left:${imgX}px;top:${imgY}px;width:${ir.width}px;height:${Math.max(0, y)}px`;
+      `left:${imgX}px;top:${imgY}px;width:${ir.width}px;height:${Math.max(0, sel.y)}px`;
 
-    // Bottom overlay: from selection bottom to image bottom
     this._overlayBottom.style.cssText =
-      `left:${imgX}px;top:${imgY + y + height}px;width:${ir.width}px;height:${Math.max(0, ir.height - y - height)}px`;
+      `left:${imgX}px;top:${imgY + sel.y + sel.height}px;width:${ir.width}px;height:${Math.max(0, ir.height - sel.y - sel.height)}px`;
 
-    // Left overlay: between top and bottom, from image left to selection left
     this._overlayLeft.style.cssText =
-      `left:${imgX}px;top:${imgY + y}px;width:${Math.max(0, x)}px;height:${height}px`;
+      `left:${imgX}px;top:${imgY + sel.y}px;width:${Math.max(0, sel.x)}px;height:${sel.height}px`;
 
-    // Right overlay: between top and bottom, from selection right to image right
     this._overlayRight.style.cssText =
-      `left:${imgX + x + width}px;top:${imgY + y}px;width:${Math.max(0, ir.width - x - width)}px;height:${height}px`;
+      `left:${imgX + sel.x + sel.width}px;top:${imgY + sel.y}px;width:${Math.max(0, ir.width - sel.x - sel.width)}px;height:${sel.height}px`;
 
-    // Selection rectangle
     this._selEl.style.cssText =
-      `left:${imgX + x}px;top:${imgY + y}px;width:${width}px;height:${height}px`;
+      `left:${imgX + sel.x}px;top:${imgY + sel.y}px;width:${sel.width}px;height:${sel.height}px`;
   }
 
-  /** Notify parent of selection change */
   _notify() {
     this._onChange(this.getImageCoordinates());
   }
 
-  /** Clean up event listeners and DOM */
   destroy() {
     if (this._raf) cancelAnimationFrame(this._raf);
     this._container.removeEventListener('pointerdown', this._onPointerDown);

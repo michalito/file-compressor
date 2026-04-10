@@ -30,9 +30,9 @@
                     <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-refresh-cw"/></svg>
                     <span>Re-process</span>
                 </button>
-                <button class="btn btn--ghost btn--sm workspace-toolbar__retry-btn is-hidden" id="retry-failed">
+                <button class="btn btn--ghost btn--sm workspace-toolbar__retry-btn is-hidden" id="retry-incomplete">
                     <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-refresh-cw"/></svg>
-                    <span>Retry Failed</span>
+                    <span>Retry Incomplete</span>
                 </button>
                 <button class="btn btn--secondary btn--sm" id="download-all" disabled title="Processing...">
                     <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-download"/></svg>
@@ -297,5 +297,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="{{ url_for('static', filename='js/vendor/jszip.min.js') }}"></script>
 {% endblock %}

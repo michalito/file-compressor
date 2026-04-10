@@ -4,7 +4,7 @@ import io
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session
 
 from .compression import ImageCompressor, ImageValidationError
-from .auth import RateLimitExceeded
+from .auth import RateLimitExceeded, login_required
 from .validators import (
     validate_file, validate_compression_mode, validate_resize_mode,
     validate_dimensions, validate_quality, validate_output_format,
@@ -75,7 +75,7 @@ def logout():
 
 
 @main.route('/')
-@current_app.auth.login_required
+@login_required
 def index():
     return render_template('index.html')
 
@@ -147,7 +147,7 @@ def _process_image_file(file, compression_mode, resize_mode, max_width, max_heig
 
 
 @main.route('/process', methods=['POST'])
-@current_app.auth.login_required
+@login_required
 def process_image():
     # Validate file
     file = request.files.get('file')
@@ -231,7 +231,7 @@ def process_image():
 
 
 @main.route('/download', methods=['POST'])
-@current_app.auth.login_required
+@login_required
 def download_file():
     """Handle download of compressed images directly from memory"""
     try:
@@ -278,7 +278,7 @@ def download_file():
 
 
 @main.route('/crop', methods=['POST'])
-@current_app.auth.login_required
+@login_required
 def crop_image():
     """Crop and/or rotate an already-processed image."""
     try:
@@ -379,7 +379,7 @@ def crop_image():
 
 
 @main.route('/theme', methods=['POST'])
-@current_app.auth.login_required
+@login_required
 def toggle_theme():
     data = request.json
     if not data:

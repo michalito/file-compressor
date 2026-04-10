@@ -69,7 +69,7 @@ Or use the production Compose file:
 docker-compose -f docker-compose.prod.yml up -d --build
 ```
 
-Access the app at **http://localhost:8000**. This runs Gunicorn with 2 workers, 2 threads, and a 120-second timeout.
+Access the app at **http://localhost:8000**. This runs Gunicorn with 1 worker, 2 threads, and a 120-second timeout.
 
 To stop:
 
@@ -136,7 +136,7 @@ Per-IP, no daily limits:
 
 ### Brute Force Protection
 
-5 failed login attempts triggers a 5-minute IP lockout. Lockout countdown is displayed on the login page.
+5 failed login attempts triggers a 5-minute IP lockout. Lockout countdown is displayed on the login page. Production defaults to a single Gunicorn worker so this in-memory lockout and the documented rate limits stay consistent.
 
 ## Usage
 
@@ -181,7 +181,7 @@ Images are **processed automatically** when uploaded — there is no manual "Pro
 
 **Toolbar actions** (appear after uploading files):
 - **Re-process** — appears when you change settings after processing; re-runs all files with new settings
-- **Retry Failed** — re-processes only images that encountered errors
+- **Retry Incomplete** — re-processes images that failed or were cancelled
 - **Cancel** — stops the current batch (already-processed images are kept)
 - **Clear All** — removes all files and returns to the empty state
 
@@ -220,10 +220,10 @@ The Dockerfile uses a multi-stage build:
 2. **Runtime stage** — copies only the venv and application code, runs as non-root user `appuser`
 
 **Gunicorn configuration** (from Dockerfile CMD):
-- 2 worker processes, 2 threads per worker
+- 1 worker process, 2 threads
 - 120-second request timeout
 - 5-second keep-alive
-- Sync worker class with application preload
+- Sync worker class with application preload; single-worker default keeps in-memory auth and rate limits accurate
 - Access and error logs written to stdout/stderr
 
 ### Docker Entrypoint
@@ -309,6 +309,7 @@ docker image prune -f  # Remove old images
 
 ### Brute Force Protection
 - 5 failed login attempts triggers a 5-minute IP lockout
+- Production defaults to one worker because rate limiting and login-attempt tracking are in-memory
 - Thread-safe tracking with `threading.Lock`
 
 ### Input Validation

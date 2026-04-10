@@ -3,7 +3,12 @@ from app import create_app
 
 
 @pytest.fixture()
-def app():
+def app(monkeypatch):
+    monkeypatch.setenv('APP_PASSWORD', 'test-password')
+    monkeypatch.setenv('SECRET_KEY', 'test-secret-key')
+    monkeypatch.setenv('FLASK_ENV', 'development')
+    monkeypatch.setenv('PROXY_FIX', 'false')
+
     app = create_app()
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False

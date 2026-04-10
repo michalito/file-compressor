@@ -1,10 +1,10 @@
-from flask import Flask
+from flask import Flask, jsonify, session, url_for
 from dotenv import load_dotenv
 import os
 from werkzeug.security import generate_password_hash
-from .auth import Auth
+from .auth import Auth, is_api_request
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 
 def _read_version():
     for path in ('VERSION', os.path.join(os.path.dirname(__file__), '..', 'VERSION')):
@@ -14,6 +14,10 @@ def _read_version():
         except OSError:
             continue
     return 'dev'
+
+
+def _get_rate_limit(env_name, default):
+    return os.getenv(env_name, default)
 
 
 def create_app():
@@ -97,19 +101,44 @@ def create_app():
             response.headers['Pragma'] = 'no-cache'
         return response
 
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(error):
+        if is_api_request():
+            if not session.get('authenticated'):
+                return jsonify({
+                    'error': 'Authentication required',
+                    'code': 'auth_required',
+                    'redirect': url_for('main.login'),
+                }), 401
+
+            return jsonify({
+                'error': error.description,
+                'code': 'csrf_failed',
+                'reload': True,
+            }), 400
+
+        return error.description, 400
+
     # Make app version available to all templates
     app.jinja_env.globals['app_version'] = _read_version()
 
     # Register blueprints
-    with app.app_context():
-        from app.routes import main
-        app.register_blueprint(main)
+    from app.routes import main
+    app.register_blueprint(main)
 
     # Apply rate limits to routes (must store wrapped function back)
     limiter = app.limiter
-    app.view_functions['main.login'] = limiter.limit("10 per minute")(app.view_functions['main.login'])
-    app.view_functions['main.process_image'] = limiter.limit("30 per minute")(app.view_functions['main.process_image'])
-    app.view_functions['main.download_file'] = limiter.limit("120 per minute")(app.view_functions['main.download_file'])
-    app.view_functions['main.crop_image'] = limiter.limit("30 per minute")(app.view_functions['main.crop_image'])
+    app.view_functions['main.login'] = limiter.limit(
+        _get_rate_limit('LOGIN_RATE_LIMIT', "10 per minute")
+    )(app.view_functions['main.login'])
+    app.view_functions['main.process_image'] = limiter.limit(
+        _get_rate_limit('PROCESS_RATE_LIMIT', "30 per minute")
+    )(app.view_functions['main.process_image'])
+    app.view_functions['main.download_file'] = limiter.limit(
+        _get_rate_limit('DOWNLOAD_RATE_LIMIT', "120 per minute")
+    )(app.view_functions['main.download_file'])
+    app.view_functions['main.crop_image'] = limiter.limit(
+        _get_rate_limit('CROP_RATE_LIMIT', "30 per minute")
+    )(app.view_functions['main.crop_image'])
 
     return app

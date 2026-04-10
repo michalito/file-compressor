@@ -1,159 +1,156 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+**Compressify** — self-hosted, password-protected image compression/resizing/watermarking web app. All processing in-memory (no files on disk).
 
-**Compressify** — a self-hosted, password-protected web app for image compression, resizing, and watermarking. All processing happens in-memory (no files on disk).
+## Commands
 
-## Development Commands
-
-### Running the Application
-
-Local development (Flask dev server, port 5000):
 ```bash
-python run.py
-```
-Debug mode: set `FLASK_DEBUG=1` in `.env` or environment.
+# Dev
+python run.py                                        # Flask dev server, port 5000
+docker-compose up --build                            # Docker dev, port 5001, hot-reload
 
-Development with Docker (hot-reload via volume mounts, host port 5001):
-```bash
-docker-compose up --build
-```
-
-Production with Docker (Gunicorn, host port 8000):
-```bash
+# Prod
 docker-compose -f docker-compose.prod.yml up -d --build
-docker-compose -f docker-compose.prod.yml logs -f web
-```
+./run-prod.sh                                        # deploy | rollback | status | logs
 
-Production deployment (with rollback support):
-```bash
-./run-prod.sh              # Full deploy: pull → build → start → health check
-./run-prod.sh rollback     # Roll back to previous image
-./run-prod.sh status       # Show container & image status
-./run-prod.sh logs         # Tail container logs
-```
+# Test
+pytest                                               # all tests
+pytest tests/test_crop.py                            # single file
+pytest -k test_crop_jpeg                             # single test
 
-### Environment Setup
-
-Requires Python 3.11+ (matches Dockerfile base image).
-
-```bash
-cp example.env .env
-# Edit .env — APP_PASSWORD and SECRET_KEY are required
-python -m venv venv && source venv/bin/activate
+# Setup (Python 3.11+)
+cp example.env .env  # APP_PASSWORD and SECRET_KEY required
 pip install -r requirements.txt
 ```
 
-### Testing
+## File Map
 
-```bash
-pytest                       # Run all tests
-pytest tests/test_crop.py    # Run a single test file
-pytest -k test_crop_jpeg     # Run a specific test by name
+```
+app/
+  __init__.py              # App factory: config, CSRF, auth, rate limiting
+  routes.py                # Blueprint: /login, /logout, /, /process, /crop, /download, /theme
+  auth.py                  # Auth class, login_required decorator, brute-force protection
+  validators.py            # All input validation — returns (is_valid, error_message) tuples
+  forms.py                 # LoginForm (Flask-WTF CSRF)
+  compression/
+    __init__.py            # Exports; registers pillow-heif for HEIC support
+    image_processor.py     # ImageCompressor: compress, crop, rotate, watermark, validate
+    fonts/Inter-SemiBold.ttf
+
+app/templates/
+  base.html                # Layout + SVG sprite sheet + CSRF meta tag
+  index.html               # Main app
+  login.html               # Login page
+  image_tile_template.html # Image tile component
+
+app/static/js/
+  main.js                  # Entry: ES module, page-context routing
+  state/app-state.js       # Reactive proxy store, persists settings to localStorage
+  lib/                     # api.js (fetch+CSRF), dom.js, events.js (pub/sub), storage.js
+  components/              # theme, toast, modal (focus trap), progress, confirm, footer, unsaved-changes
+  features/                # upload, settings (tool registry), image-tile, batch (queue+ZIP),
+                           # crop + crop-interaction, login
+
+app/static/css/
+  tokens.css               # Design tokens
+  components/              # BEM component styles
+  pages/                   # Page-specific styles
+
+tests/
+  conftest.py              # Fixtures: app (CSRF disabled), client, auth_client (pre-authenticated)
 ```
 
-Test fixtures in `tests/conftest.py`: `app` (test config, CSRF disabled), `client` (test client), `auth_client` (pre-authenticated session). pytest config in `pyproject.toml`.
+## Architecture
 
-## Architecture Overview
+### Processing Pipeline
 
-### Application Structure
+1. File validation (`validators.py`) -> image validation (`ImageCompressor.validate_image` -> `ValidationResult` dataclass with optional `.image`)
+2. EXIF orientation -> normalize color mode -> sRGB conversion -> resize -> watermark -> compress
+3. Response: base64-encoded image in JSON
+4. Download: client sends base64 back, `/download` decodes to binary
 
-- `app/__init__.py`: App factory — config, CSRF, auth, rate limiting. Rate limits applied to `app.view_functions` after blueprint registration (not at import time).
-- `app/routes.py`: Single blueprint with endpoints: `/login`, `/logout`, `/` (index), `/process`, `/crop`, `/download`, `/theme`
-- `app/auth.py`: Auth class with `login_required` decorator, thread-safe brute-force protection (5 attempts → 5-min lockout), Flask-Limiter integration
-- `app/validators.py`: Centralized validation — returns `(is_valid, error_message)` tuples
-- `app/compression/image_processor.py`: ImageCompressor class with three modes, ValidationResult dataclass, watermark support
-- `app/forms.py`: Flask-WTF login form (CSRF)
-
-### Compression Mode Name Mapping
-
-The UI labels differ from the internal code identifiers:
+### Compression Modes
 
 | UI Label | Code Value | Behavior |
 |----------|-----------|----------|
-| Lossless | `lossless` | Preserves format, optimize=True, quality=95 |
+| Lossless | `lossless` | Preserves format, optimize=True, quality=95. HEIC -> PNG |
 | Balanced | `web` | Targets ~200KB, strips EXIF, converts to JPEG/WebP |
 | Maximum | `high` | Targets <100KB, strips EXIF, aggressive compression |
 
-### Image Processing Pipeline
+### Crop & Rotate
 
-1. File validation (validators.py) → image validation (ImageCompressor.validate_image → ValidationResult)
-2. Pipeline: EXIF orientation → normalize color mode → sRGB conversion → resize → **watermark** → compress
-3. Output encoded as base64 string in JSON response
-4. Client stores base64 in memory; `/download` decodes back to binary via `base64.b64decode()`
+- `/crop` operates on already-compressed base64 (not originals)
+- Supports chaining: `/process` -> `/crop` -> `/crop` or `/crop` -> `/process`
+- Rotation: 90-degree increments via `Image.transpose()` (lossless)
+- Crop preserves RGBA transparency for PNG/WebP
+- Aspect ratios: free, 1:1, 4:3, 3:2, 16:9, 9:16
 
-### Crop Feature
+### Watermark
 
-Post-processing crop via `/crop` endpoint — operates on already-compressed base64 data, not original uploads:
-- `ImageCompressor.crop_image()` validates bounds, crops, re-encodes in original format (preserves RGBA transparency for PNG/WebP)
-- Route validates via `validate_crop_coordinates()` then `validate_image()` before cropping
-- Frontend: `js/features/crop.js` (crop UI/state), `js/features/crop-interaction.js` (drag/resize interaction)
-- Pipeline supports chaining: `/process` → `/crop` → `/crop` (successive crops) or `/crop` → `/process` (reprocess cropped result)
-
-### Watermark Feature
-
-Text watermark via Pillow ImageDraw/ImageFont (no extra dependencies):
-- Font: Inter SemiBold bundled at `app/compression/fonts/Inter-SemiBold.ttf` (OFL licensed), cached per size
+- Font: Inter SemiBold bundled, cached per size via `lru_cache`
 - Positions: `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, `tiled`
-- Options: opacity (10–100), size (1–10 relative scale), color (`white`/`black`/`auto`), angle (-180° to 180°, 0° = horizontal)
+- Options: opacity (10-100), size (1-20 relative scale), color (`white`/`black`/`auto`), angle (-180 to 180), tile density (1-10)
 - Auto color: samples target area luminance, picks white on dark / black on light
-- Tiled mode: configurable angle (default 0°), text stamps with 2× spacing, staggered rows
+- Tiled mode: text stamps with configurable density and angle
 - RGBA overlay compositing with shadow text for visibility
 
-### Frontend Architecture (ES Modules, no build tools)
+### Format Remapping
 
-- Entry: `js/main.js` — ES module with page-context routing
-- State: `js/state/app-state.js` — reactive store, persists settings to localStorage
-- Lib: `js/lib/` — `api.js` (fetch+CSRF), `dom.js` (safe DOM helpers, SVG icons), `events.js` (pub/sub), `storage.js`
-- Components: `js/components/` — theme, toast, modal (focus trap), progress
-- Features: `js/features/` — upload, settings (tool registry), image-tile, batch (queue+ZIP), login, crop + crop-interaction
-- CSS: design tokens (`tokens.css`), BEM naming, component files in `css/components/`, page files in `css/pages/`
-- SVG sprite sheet in `base.html` (Lucide-style icons)
-- UX flow: Upload → Auto-Process → Download (no manual Process button)
-- Batch: 5 concurrent uploads (CHUNK_SIZE), ZIP download via JSZip loaded from CDN (`cdnjs.cloudflare.com`)
-- Settings panel repositions: in empty state → inside `#workspace-empty`; with files → after `#workspace-toolbar`
-- `textContent`/`sanitizeText()` everywhere — no innerHTML for user content
-- `crypto.randomUUID()` for file IDs
-- Login uses standard form POST (not AJAX)
-- 5 responsive breakpoints, mobile-first
+Non-native formats remapped early in `validate_image()`: MPO -> JPEG, HEIF -> PNG. Requires `pillow-heif` (`register_heif_opener()` in `app/compression/__init__.py`).
 
-## Key Technical Patterns
+### Frontend Patterns
 
-**Authentication**: Auth class initialized in app factory as `app.auth`. Routes use `@current_app.auth.login_required`. Session-based with `session.permanent = True` (required for 30-min `PERMANENT_SESSION_LIFETIME`). Thread-safe login tracking via `threading.Lock`.
+- UX flow: Upload -> Auto-Process -> Download (no manual Process button)
+- Batch: 5 concurrent uploads (`CHUNK_SIZE`), ZIP download via JSZip from CDN
+- Settings panel repositions: empty state -> inside `#workspace-empty`; with files -> after `#workspace-toolbar`
+- Re-process detection: `processedWithSettings` snapshot compared to current settings
+- Auto-process fires via `files:autoProcess` event at end of `handleFiles()`
+- Quality defaults per mode+format in `QUALITY_DEFAULTS`; `quality: null` means use backend default
+- Security: `textContent`/`sanitizeText()` everywhere (no innerHTML), `crypto.randomUUID()` for file IDs
+- Login: standard form POST (not AJAX)
+- ES modules, no build tools, 5 responsive breakpoints (mobile-first)
 
-**Rate Limiting**: Flask-Limiter decorators can't be applied at blueprint import time — must wrap `app.view_functions` after registration. See `__init__.py` lines 96–100. Limits: `/login` 10/min, `/process` 30/min, `/crop` 30/min, `/download` 120/min.
+## Invariants & Gotchas
 
-**Validation**: Two layers: file-level (validators.py returns tuples) then image-level (ImageCompressor returns ValidationResult dataclass with optional `.image` to avoid reopening). Warnings logged but don't block processing.
+**Rate limiting**: Flask-Limiter decorators cannot be applied at blueprint import time. Must wrap `app.view_functions` after blueprint registration (see `__init__.py` lines 129-142).
 
-**Format Remapping**: Non-native input formats are remapped early in `validate_image()`: MPO → JPEG (smartphone multi-picture objects), HEIF → PNG (Apple HEIC photos). This avoids handling these formats in every downstream code path. Requires `pillow-heif` (`register_heif_opener()` in `app/compression/__init__.py`).
+**Session lifetime**: `session.permanent = True` is required for `PERMANENT_SESSION_LIFETIME` to take effect.
 
-**Error Handling**: Custom exceptions in image_processor.py (ImageValidationError, CompressionError, FileSizeError, FormatError). RateLimitExceeded in auth.py — must NOT be inside a broad `except Exception` or it gets swallowed. Routes return generic errors to client, log details server-side.
+**RateLimitExceeded**: Must NOT be caught by a broad `except Exception` block — it gets swallowed. Keep it outside generic error handlers.
 
-**State & Re-processing**: Frontend `processedWithSettings` snapshot compared to current settings triggers re-process detection. Auto-process fires via `files:autoProcess` event at end of `handleFiles()`.
+**Auth pattern**: Auth class initialized as `app.auth` in factory. Routes use `@current_app.auth.login_required`. Brute-force: 5 attempts -> 5-min lockout, thread-safe via `threading.Lock`, in-memory per worker.
 
-**Quality Defaults**: `QUALITY_DEFAULTS` lookup in frontend keyed by mode+format. Quality slider resets on mode/format change. State includes `quality: null` — null means use backend default.
+**Validation layers**: File-level (`validators.py` returns tuples) then image-level (`ImageCompressor` returns `ValidationResult` dataclass with optional `.image` to avoid reopening). Warnings logged but don't block.
+
+**Custom exceptions**: `ImageValidationError`, `CompressionError`, `FileSizeError`, `FormatError` — all in `image_processor.py`. Routes return generic errors to client, log details server-side.
 
 ## Configuration Limits
 
 | Setting | Value |
 |---------|-------|
-| Max file size | 50MB (`MAX_CONTENT_LENGTH` in `__init__.py`) |
-| Session timeout | 30 min (`PERMANENT_SESSION_LIFETIME`) |
-| CSRF token expiry | 1 hour (`WTF_CSRF_TIME_LIMIT`) |
+| Max file size | 50 MB |
 | Max pixel count | 40M pixels (rejected) |
 | Max dimensions | 10,000 px per side |
+| Session timeout | 30 min |
+| CSRF token expiry | 1 hour |
+| Brute-force lockout | 5 attempts / 5 min |
 | Supported input | JPG, PNG, WebP, TIFF, HEIC/HEIF |
-| Output formats | Lossless preserves original (HEIC → PNG); Balanced/Maximum → JPEG (default) or WebP |
+| Output formats | `auto`, `jpeg`, `webp`, `png` |
+| Watermark text | max 50 chars |
+
+## Rate Limits
+
+| Endpoint | Limit |
+|----------|-------|
+| `/login` | 10/min |
+| `/process` | 30/min |
+| `/crop` | 30/min |
+| `/download` | 120/min |
 
 ## Deployment
 
-- `docker-compose.yml`: Development — Flask dev server, port 5001→5000, `FLASK_DEBUG=1`, volume mounts for hot-reload
-- `docker-compose.prod.yml`: Production — Gunicorn (2 workers, 2 threads, 120s timeout), port 8000
-- `Dockerfile`: Multi-stage build (builder + runtime), non-root `appuser`
+- `Dockerfile`: Multi-stage build, Python 3.11-slim, non-root `appuser`, `libheif1` for HEIC
+- `docker-compose.yml`: Dev — port 5001, `FLASK_DEBUG=1`, volume mounts
+- `docker-compose.prod.yml`: Prod — Gunicorn (1 worker, 2 threads, 120s timeout), port 8000
 - `docker-entrypoint.sh`: Validates SECRET_KEY/APP_PASSWORD, creates secured `.env` at `/app/instance/secrets/.env`
-- Set `PROXY_FIX=true` when behind a reverse proxy (enables Werkzeug ProxyFix)
-- All processing in-memory (io.BytesIO) — no temp files on disk
-
-## Known Issues
-
-- Maximum compression produces WebP files that only open in browsers, not all desktop image viewers
+- Set `PROXY_FIX=true` when behind a reverse proxy

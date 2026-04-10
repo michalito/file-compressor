@@ -1,0 +1,31 @@
+{
+  "name": "file-compressor",
+  "version": "1.0.0",
+  "description": "A self-hosted, password-protected web application for image compression and resizing. All processing happens in-memory on the server — no files are stored on disk.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "python3 -m pytest -q",
+    "test:e2e": "playwright test",
+    "test:all": "python3 -m pytest -q && playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/michalito/file-compressor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/michalito/file-compressor/issues"
+  },
+  "homepage": "https://github.com/michalito/file-compressor#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "jszip": "^3.10.1"
+  }
+}

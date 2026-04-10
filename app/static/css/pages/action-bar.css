@@ -40,7 +40,7 @@
 }
 
 
-/* Retry Failed button — error-themed */
+/* Retry Incomplete button — error-themed */
 .workspace-toolbar__retry-btn {
   color: var(--color-error);
 }

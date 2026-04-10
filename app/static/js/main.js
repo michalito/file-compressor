@@ -27,8 +27,10 @@ if (appLayout) {
   initBatch();
   initCrop();
   initUnloadWarning();
+  document.documentElement.dataset.appReady = 'true';
 } else if (loginForm) {
   // Login page
   const { initLogin } = await import('./features/login.js');
   initLogin();
+  document.documentElement.dataset.appReady = 'true';
 }

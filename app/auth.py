@@ -2,7 +2,7 @@ import threading
 import time
 from functools import wraps
 
-from flask import session, redirect, url_for, current_app
+from flask import session, redirect, url_for, current_app, jsonify, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import check_password_hash
@@ -10,6 +10,34 @@ from werkzeug.security import check_password_hash
 
 class RateLimitExceeded(Exception):
     pass
+
+
+def is_api_request():
+    accept = request.headers.get('Accept', '').lower()
+    requested_with = request.headers.get('X-Requested-With', '')
+    return (
+        request.is_json
+        or 'application/json' in accept
+        or requested_with == 'fetch'
+    )
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if session.get('authenticated'):
+            return f(*args, **kwargs)
+
+        if is_api_request():
+            return jsonify({
+                'error': 'Authentication required',
+                'code': 'auth_required',
+                'redirect': url_for('main.login'),
+            }), 401
+
+        return redirect(url_for('main.login'))
+
+    return decorated_function
 
 
 class Auth:
@@ -25,9 +53,10 @@ class Auth:
 
         NOTE: Rate limiting and login attempt tracking are in-memory only.
         This means they reset on server restart and are not shared across
-        Gunicorn workers. This is an acceptable trade-off for a single-user
-        self-hosted app. For multi-user deployments, switch storage_uri
-        to a Redis or Memcached backend.
+        Gunicorn workers. The production config therefore defaults to a
+        single worker so the documented limits behave consistently. For
+        multi-user deployments, switch storage_uri to a Redis or Memcached
+        backend and move login attempt tracking out of process memory.
         """
         self.app = app
         self.limiter = Limiter(
@@ -117,12 +146,3 @@ class Auth:
         """Reset failed attempts (caller must hold _lock)"""
         if ip in self.login_attempts:
             del self.login_attempts[ip]
-
-    @staticmethod
-    def login_required(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if not session.get('authenticated'):
-                return redirect(url_for('main.login'))
-            return f(*args, **kwargs)
-        return decorated_function

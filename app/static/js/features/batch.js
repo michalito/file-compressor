@@ -1,7 +1,7 @@
 /**
- * Batch operations: auto-process, queue processing, ZIP download, file management.
+ * Batch operations: auto-process queue, ZIP download, file management.
  */
-import { $, downloadBlob, base64ToUint8Array } from '../lib/dom.js';
+import { $, createElement, downloadBlob, base64ToUint8Array } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import { postJSON } from '../lib/api.js';
 import { state, clearAllFiles, updateFile } from '../state/app-state.js';
@@ -10,29 +10,30 @@ import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 import { showConfirm } from '../components/confirm.js';
 
+const CHUNK_SIZE = 5;
+const RETRYABLE_STATUSES = new Set(['pending', 'error', 'cancelled']);
+
 let processing = false;
 let abortController = null;
-const CHUNK_SIZE = 5;
+let activeBatch = null;
+const queue = [];
+const queuedIds = new Set();
 
 export function initBatch() {
   const clearBtn = $('#clear-all');
   const cancelBtn = $('#cancel-batch');
   const downloadBtn = $('#download-all');
-  const retryFailedBtn = $('#retry-failed');
+  const retryIncompleteBtn = $('#retry-incomplete');
   const reprocessBtn = $('#reprocess-all');
 
-  // Auto-process when files are added
-  bus.on('files:autoProcess', async ({ fileIds }) => {
-    if (processing) return;
-    await runBatch(fileIds);
+  bus.on('files:autoProcess', ({ fileIds }) => {
+    enqueueForProcessing(fileIds);
   });
 
-  // Download All
   if (downloadBtn) {
     downloadBtn.addEventListener('click', () => downloadAll());
   }
 
-  // Clear All (with confirmation)
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
       const count = state.files.size;
@@ -46,21 +47,27 @@ export function initBatch() {
       });
       if (!confirmed) return;
 
+      if (abortController) {
+        abortController.abort();
+      }
+
+      clearQueuedEntries();
+      if (activeBatch) {
+        activeBatch.cancelled = true;
+        activeBatch.suppressSummary = true;
+      }
       clearAllFiles();
     });
   }
 
-  // Retry Failed
-  if (retryFailedBtn) {
-    retryFailedBtn.addEventListener('click', () => retryFailed());
+  if (retryIncompleteBtn) {
+    retryIncompleteBtn.addEventListener('click', () => retryIncomplete());
   }
 
-  // Re-process all done files with new settings
   if (reprocessBtn) {
     reprocessBtn.addEventListener('click', () => reprocessAll());
   }
 
-  // Cancel batch
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
       if (abortController) {
@@ -69,7 +76,6 @@ export function initBatch() {
     });
   }
 
-  // Show/hide toolbar based on file count
   bus.on('files:countChanged', ({ total }) => {
     const toolbar = $('#workspace-toolbar');
     if (toolbar) {
@@ -79,97 +85,421 @@ export function initBatch() {
     if (el) el.textContent = total;
   });
 
-  // Update Download All button and Retry Failed visibility when file statuses change
   bus.on('file:updated', () => {
     updateDownloadAllState();
-    updateRetryFailedVisibility();
-    updateReprocessVisibility();
-  });
-  bus.on('files:cleared', () => {
-    updateDownloadAllState();
-    updateRetryFailedVisibility();
-    updateReprocessVisibility();
-  });
-  bus.on('files:removed', () => {
-    updateDownloadAllState();
-    updateRetryFailedVisibility();
+    updateRetryIncompleteVisibility();
     updateReprocessVisibility();
   });
 
-  // Re-process detection: when settings change, check if any done files used different settings
+  bus.on('files:cleared', () => {
+    clearQueuedEntries();
+    if (!processing) {
+      activeBatch = null;
+      const batchProgressEl = $('#batch-progress');
+      if (batchProgressEl) batchProgressEl.classList.add('is-hidden');
+      globalProgress.hide();
+    }
+    updateDownloadAllState();
+    updateRetryIncompleteVisibility();
+    updateReprocessVisibility();
+  });
+
+  bus.on('files:removed', ({ fileId }) => {
+    removeQueuedFile(fileId);
+    updateDownloadAllState();
+    updateRetryIncompleteVisibility();
+    updateReprocessVisibility();
+  });
+
   bus.on('settings:changed', () => {
     updateReprocessVisibility();
   });
 }
 
-/**
- * Enable/disable the Download All button based on whether any files have been processed.
- */
+function enqueueForProcessing(fileIds) {
+  const newlyQueued = [];
+
+  for (const fileId of fileIds) {
+    const entry = state.files.get(fileId);
+    if (!entry || !RETRYABLE_STATUSES.has(entry.status) || queuedIds.has(fileId)) {
+      continue;
+    }
+
+    queuedIds.add(fileId);
+    queue.push(fileId);
+    newlyQueued.push(fileId);
+  }
+
+  if (newlyQueued.length === 0) return;
+
+  if (activeBatch) {
+    activeBatch.total += newlyQueued.length;
+    syncBatchTotals();
+  }
+
+  void drainQueue();
+}
+
+function removeQueuedFile(fileId) {
+  if (!queuedIds.has(fileId)) return;
+
+  queuedIds.delete(fileId);
+  const index = queue.indexOf(fileId);
+  if (index >= 0) {
+    queue.splice(index, 1);
+  }
+
+  if (activeBatch) {
+    activeBatch.total = Math.max(activeBatch.processed, activeBatch.total - 1);
+    syncBatchTotals();
+  }
+}
+
+function clearQueuedEntries() {
+  queue.length = 0;
+  queuedIds.clear();
+}
+
+function startBatchIfNeeded() {
+  if (activeBatch || queue.length === 0) return;
+
+  activeBatch = {
+    total: queue.length,
+    processed: 0,
+    succeeded: 0,
+    failed: 0,
+    cancelledCount: 0,
+    startTime: Date.now(),
+    cancelled: false,
+    interrupted: false,
+  };
+
+  const batchProgressEl = $('#batch-progress');
+  const succeededEl = $('#batch-succeeded');
+  const failedEl = $('#batch-failed');
+  const successCountEl = $('#batch-success-count');
+  const failCountEl = $('#batch-fail-count');
+
+  if (batchProgressEl) batchProgressEl.classList.remove('is-hidden');
+  if (succeededEl) succeededEl.classList.add('is-hidden');
+  if (failedEl) failedEl.classList.add('is-hidden');
+  if (successCountEl) successCountEl.textContent = 0;
+  if (failCountEl) failCountEl.textContent = 0;
+
+  syncBatchTotals();
+  globalProgress.show();
+}
+
+async function drainQueue() {
+  if (processing || queue.length === 0) return;
+
+  processing = true;
+  const controller = new AbortController();
+  abortController = controller;
+  startBatchIfNeeded();
+
+  try {
+    while (queue.length > 0 && !controller.signal.aborted) {
+      const chunk = dequeueChunk(CHUNK_SIZE);
+      await Promise.all(chunk.map((fileId) => processQueuedFile(fileId, controller.signal)));
+    }
+
+    if (controller.signal.aborted) {
+      markRemainingQueuedFilesCancelled();
+      if (activeBatch) activeBatch.cancelled = true;
+    }
+  } finally {
+    finishBatch();
+    processing = false;
+    if (abortController === controller) {
+      abortController = null;
+    }
+
+    if (queue.length > 0) {
+      void drainQueue();
+    }
+  }
+}
+
+function dequeueChunk(size) {
+  const chunk = [];
+
+  while (chunk.length < size && queue.length > 0) {
+    const fileId = queue.shift();
+    queuedIds.delete(fileId);
+    chunk.push(fileId);
+  }
+
+  return chunk;
+}
+
+async function processQueuedFile(fileId, signal) {
+  const batch = activeBatch;
+  if (!batch) return;
+
+  try {
+    const entry = state.files.get(fileId);
+    if (!entry) {
+      recordBatchOutcome(batch, 'skipped');
+      return;
+    }
+
+    if (signal.aborted) {
+      markFileCancelled(fileId);
+      recordBatchOutcome(batch, 'cancelled');
+      return;
+    }
+
+    if (entry.status === 'done') {
+      recordBatchOutcome(batch, 'done');
+      return;
+    }
+
+    await processTile(fileId, {
+      skipGlobalProgress: true,
+      signal,
+    });
+
+    const updatedEntry = state.files.get(fileId);
+    if (updatedEntry?.status === 'done') {
+      recordBatchOutcome(batch, 'done');
+    } else if (updatedEntry?.status === 'error') {
+      recordBatchOutcome(batch, 'error');
+    } else {
+      if (updatedEntry?.status !== 'cancelled') {
+        markFileCancelled(fileId);
+      }
+      recordBatchOutcome(batch, 'cancelled');
+    }
+  } catch (error) {
+    console.error('Unexpected batch processing error:', error);
+    batch.interrupted = true;
+
+    const updatedEntry = state.files.get(fileId);
+    if (updatedEntry?.status === 'done') {
+      recordBatchOutcome(batch, 'done');
+      return;
+    }
+
+    if (updatedEntry?.status === 'error') {
+      recordBatchOutcome(batch, 'error');
+      return;
+    }
+
+    if (updatedEntry?.status !== 'cancelled') {
+      markFileCancelled(fileId);
+    }
+    recordBatchOutcome(batch, 'cancelled');
+  }
+}
+
+function recordBatchOutcome(batch, outcome) {
+  if (outcome === 'done') {
+    batch.succeeded++;
+  } else if (outcome === 'error') {
+    batch.failed++;
+  } else if (outcome === 'cancelled') {
+    batch.cancelled = true;
+    batch.cancelledCount++;
+  }
+
+  batch.processed++;
+
+  try {
+    syncBatchProgress();
+  } catch (error) {
+    console.error('Failed to sync batch progress:', error);
+  }
+}
+
+function syncBatchTotals() {
+  const totalCountEl = $('#total-count');
+  if (totalCountEl && activeBatch) {
+    totalCountEl.textContent = activeBatch.total;
+  }
+  syncBatchProgress();
+}
+
+function syncBatchProgress() {
+  if (!activeBatch) return;
+
+  const processedCountEl = $('#processed-count');
+  const progressBar = $('#batch-progress-bar');
+  const timeRemainingEl = $('#time-remaining');
+  const succeededEl = $('#batch-succeeded');
+  const failedEl = $('#batch-failed');
+  const successCountEl = $('#batch-success-count');
+  const failCountEl = $('#batch-fail-count');
+
+  const { processed, total, succeeded, failed, startTime } = activeBatch;
+  const safeTotal = Math.max(total, 1);
+  const progress = processed / safeTotal;
+
+  if (processedCountEl) processedCountEl.textContent = processed;
+  if (progressBar) progressBar.style.width = `${progress * 100}%`;
+  globalProgress.setProgress(progress);
+
+  if (timeRemainingEl) {
+    if (processed > 0 && processed < total) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const avgTime = elapsed / processed;
+      const remaining = (total - processed) * avgTime;
+      timeRemainingEl.textContent = remaining > 60
+        ? `~${Math.ceil(remaining / 60)} min remaining`
+        : `~${Math.ceil(remaining)}s remaining`;
+    } else {
+      timeRemainingEl.textContent = '';
+    }
+  }
+
+  if (succeeded > 0 && succeededEl) {
+    succeededEl.classList.remove('is-hidden');
+    if (successCountEl) successCountEl.textContent = succeeded;
+  }
+
+  if (failed > 0 && failedEl) {
+    failedEl.classList.remove('is-hidden');
+    if (failCountEl) failCountEl.textContent = failed;
+  }
+}
+
+function finishBatch() {
+  const batch = activeBatch;
+  const batchProgressEl = $('#batch-progress');
+
+  activeBatch = null;
+  globalProgress.hide();
+
+  if (batchProgressEl) {
+    setTimeout(() => batchProgressEl.classList.add('is-hidden'), 1500);
+  }
+
+  if (!batch) return;
+  if (batch.suppressSummary) return;
+
+  const skipped = Math.max(0, batch.total - batch.processed);
+  const incomplete = batch.cancelledCount + skipped;
+  if (batch.interrupted) {
+    showToast({
+      message: `Batch interrupted. ${batch.succeeded} processed, ${incomplete} incomplete. Retry incomplete files.`,
+      type: 'warning',
+    });
+  } else if (batch.cancelled) {
+    showToast({
+      message: `Cancelled. ${batch.succeeded} processed, ${incomplete} skipped.`,
+      type: 'info',
+    });
+  } else if (batch.failed === 0) {
+    showToast({
+      message: `All ${batch.succeeded} images processed successfully`,
+      type: 'success',
+    });
+  } else {
+    showToast({
+      message: `${batch.succeeded} processed, ${batch.failed} failed`,
+      type: 'warning',
+    });
+  }
+}
+
+function markRemainingQueuedFilesCancelled() {
+  while (queue.length > 0) {
+    const fileId = queue.shift();
+    queuedIds.delete(fileId);
+    markFileCancelled(fileId);
+  }
+}
+
+function markFileCancelled(fileId) {
+  const entry = state.files.get(fileId);
+  if (!entry || entry.status === 'done') return;
+
+  updateFile(fileId, { status: 'cancelled', errorMessage: null });
+
+  const tile = document.querySelector(`[data-file-id="${fileId}"]`);
+  if (!tile) return;
+
+  tile.classList.remove('is-processing', 'is-error');
+  const progressEl = tile.querySelector('.tile__progress');
+  if (progressEl) progressEl.classList.add('is-hidden');
+
+  const errorEl = tile.querySelector('.tile__error');
+  if (errorEl) errorEl.remove();
+
+  const retryBtn = tile.querySelector('.tile__retry-btn');
+  if (retryBtn) retryBtn.classList.add('is-hidden');
+
+  const badges = tile.querySelector('.tile__status-badges');
+  if (badges && !badges.querySelector('.badge--cancelled')) {
+    badges.appendChild(createElement('span', { class: 'badge badge--cancelled' }, 'Cancelled'));
+  }
+}
+
+function resetTileForRetry(fileId) {
+  const tile = document.querySelector(`[data-file-id="${fileId}"]`);
+  if (!tile) return;
+
+  tile.classList.remove('is-error');
+  const errorEl = tile.querySelector('.tile__error');
+  if (errorEl) errorEl.remove();
+
+  const retryBtn = tile.querySelector('.tile__retry-btn');
+  if (retryBtn) retryBtn.classList.add('is-hidden');
+
+  const cancelledBadge = tile.querySelector('.badge--cancelled');
+  if (cancelledBadge) cancelledBadge.remove();
+}
+
 function updateDownloadAllState() {
   const btn = $('#download-all');
   if (!btn) return;
-  const hasDone = [...state.files.values()].some((e) => e.status === 'done' && e.processedData);
+
+  const hasDone = [...state.files.values()].some((entry) => entry.status === 'done' && entry.processedData);
   btn.disabled = !hasDone;
   btn.title = hasDone ? '' : 'Processing...';
 }
 
-/**
- * Show/hide the "Retry Failed" button.
- */
-function updateRetryFailedVisibility() {
-  const btn = $('#retry-failed');
+function updateRetryIncompleteVisibility() {
+  const btn = $('#retry-incomplete');
   if (!btn) return;
-  const hasErrors = [...state.files.values()].some((e) => e.status === 'error');
-  btn.classList.toggle('is-hidden', !hasErrors);
+
+  const hasIncomplete = [...state.files.values()].some((entry) =>
+    entry.status === 'error' || entry.status === 'cancelled'
+  );
+
+  btn.classList.toggle('is-hidden', !hasIncomplete);
 }
 
-/**
- * Show/hide the "Re-process" button when settings have changed since last processing.
- */
 function updateReprocessVisibility() {
   const btn = $('#reprocess-all');
   if (!btn) return;
 
   const currentSettings = JSON.stringify(state.settings);
-  const needsReprocess = [...state.files.values()].some((e) => {
-    if (e.status !== 'done' || !e.processedWithSettings) return false;
-    return JSON.stringify(e.processedWithSettings) !== currentSettings;
+  const needsReprocess = [...state.files.values()].some((entry) => {
+    if (entry.status !== 'done' || !entry.processedWithSettings) return false;
+    return JSON.stringify(entry.processedWithSettings) !== currentSettings;
   });
 
   btn.classList.toggle('is-hidden', !needsReprocess);
 }
 
-/**
- * Retry all failed files.
- */
-async function retryFailed() {
+async function retryIncomplete() {
   if (processing) return;
 
-  const failedIds = [...state.files.entries()]
-    .filter(([, entry]) => entry.status === 'error')
+  const incompleteIds = [...state.files.entries()]
+    .filter(([, entry]) => entry.status === 'error' || entry.status === 'cancelled')
     .map(([id]) => id);
 
-  if (failedIds.length === 0) return;
+  if (incompleteIds.length === 0) return;
 
-  // Reset each failed tile's state
-  failedIds.forEach((fileId) => {
-    const tile = document.querySelector(`[data-file-id="${fileId}"]`);
-    if (tile) {
-      tile.classList.remove('is-error');
-      const errorEl = tile.querySelector('.tile__error');
-      if (errorEl) errorEl.remove();
-      const retryBtn = tile.querySelector('.tile__retry-btn');
-      if (retryBtn) retryBtn.classList.add('is-hidden');
-    }
+  for (const fileId of incompleteIds) {
+    resetTileForRetry(fileId);
     updateFile(fileId, { status: 'pending', errorMessage: null });
-  });
+  }
 
-  await runBatch(failedIds);
+  enqueueForProcessing(incompleteIds);
 }
 
-/**
- * Re-process all done files with current settings.
- */
 async function reprocessAll() {
   if (processing) return;
 
@@ -183,170 +513,31 @@ async function reprocessAll() {
 
   if (doneIds.length === 0) return;
 
-  // Reset done files to pending
-  doneIds.forEach((fileId) => {
-    // Keep processedData intact so processImage can read prevOriginalSize
-    // from metadata (for accurate savings display). processImage overwrites
-    // processedData on success. processedWithSettings is nulled so the
-    // reprocess button hides once batch starts.
+  for (const fileId of doneIds) {
     updateFile(fileId, { status: 'pending', processedWithSettings: null });
     const tile = document.querySelector(`[data-file-id="${fileId}"]`);
-    if (tile) {
-      tile.classList.remove('is-done');
-      const processedSection = tile.querySelector('.tile__processed');
-      if (processedSection) processedSection.classList.add('is-hidden');
-      const savingsEl = tile.querySelector('.tile__savings');
-      if (savingsEl) savingsEl.classList.add('is-hidden');
-      const badges = tile.querySelector('.tile__status-badges');
-      if (badges) badges.innerHTML = '';
-      const downloadBtn = tile.querySelector('.tile__download-btn');
-      if (downloadBtn) {
-        downloadBtn.disabled = true;
-        downloadBtn.title = 'Processing...';
-      }
+    if (!tile) continue;
+
+    tile.classList.remove('is-done');
+    const processedSection = tile.querySelector('.tile__processed');
+    if (processedSection) processedSection.classList.add('is-hidden');
+
+    const savingsEl = tile.querySelector('.tile__savings');
+    if (savingsEl) savingsEl.classList.add('is-hidden');
+
+    const badges = tile.querySelector('.tile__status-badges');
+    if (badges) badges.innerHTML = '';
+
+    const downloadBtn = tile.querySelector('.tile__download-btn');
+    if (downloadBtn) {
+      downloadBtn.disabled = true;
+      downloadBtn.title = 'Processing...';
     }
-  });
+  }
 
-  await runBatch(doneIds);
+  enqueueForProcessing(doneIds);
 }
 
-/**
- * Shared batch processing loop.
- * @param {string[]} fileIds
- */
-async function runBatch(fileIds) {
-  processing = true;
-  abortController = new AbortController();
-
-  const batchProgressEl = $('#batch-progress');
-  const processedCountEl = $('#processed-count');
-  const totalCountEl = $('#total-count');
-  const timeRemainingEl = $('#time-remaining');
-  const progressBar = $('#batch-progress-bar');
-  const succeededEl = $('#batch-succeeded');
-  const failedEl = $('#batch-failed');
-  const successCountEl = $('#batch-success-count');
-  const failCountEl = $('#batch-fail-count');
-
-  const total = fileIds.length;
-  let processed = 0;
-  let succeeded = 0;
-  let failed = 0;
-  const startTime = Date.now();
-
-  // Show batch progress, reset stats
-  if (batchProgressEl) batchProgressEl.classList.remove('is-hidden');
-  if (totalCountEl) totalCountEl.textContent = total;
-  if (processedCountEl) processedCountEl.textContent = 0;
-  if (succeededEl) succeededEl.classList.add('is-hidden');
-  if (failedEl) failedEl.classList.add('is-hidden');
-  if (successCountEl) successCountEl.textContent = 0;
-  if (failCountEl) failCountEl.textContent = 0;
-
-  globalProgress.show();
-
-  // Process in chunks
-  const queue = [...fileIds];
-  let aborted = false;
-
-  while (queue.length > 0 && !aborted) {
-    const chunk = queue.splice(0, CHUNK_SIZE);
-
-    await Promise.all(
-      chunk.map(async (fileId) => {
-        if (abortController.signal.aborted) {
-          aborted = true;
-          return;
-        }
-
-        const entry = state.files.get(fileId);
-        if (!entry || entry.status === 'done') {
-          succeeded++;
-          processed++;
-          updateBatchProgress(processed, total, startTime, processedCountEl, progressBar, timeRemainingEl);
-          updateBatchStats(succeeded, failed, succeededEl, failedEl, successCountEl, failCountEl);
-          return;
-        }
-
-        await processTile(fileId, {
-          skipGlobalProgress: true,
-          signal: abortController.signal,
-        });
-
-        const updatedEntry = state.files.get(fileId);
-        if (updatedEntry?.status === 'cancelled') {
-          aborted = true;
-          return;
-        } else if (updatedEntry?.status === 'done') {
-          succeeded++;
-        } else if (updatedEntry?.status === 'error') {
-          failed++;
-        }
-
-        processed++;
-        updateBatchProgress(processed, total, startTime, processedCountEl, progressBar, timeRemainingEl);
-        updateBatchStats(succeeded, failed, succeededEl, failedEl, successCountEl, failCountEl);
-      })
-    );
-  }
-
-  // Cleanup
-  processing = false;
-  abortController = null;
-  globalProgress.hide();
-  if (batchProgressEl) {
-    setTimeout(() => batchProgressEl.classList.add('is-hidden'), 1500);
-  }
-
-  // Completion summary toast
-  if (aborted) {
-    showToast({
-      message: `Cancelled. ${succeeded} processed, ${total - processed} skipped.`,
-      type: 'info',
-    });
-  } else if (failed === 0) {
-    showToast({
-      message: `All ${succeeded} images processed successfully`,
-      type: 'success',
-    });
-  } else {
-    showToast({
-      message: `${succeeded} processed, ${failed} failed`,
-      type: 'warning',
-    });
-  }
-}
-
-function updateBatchProgress(processed, total, startTime, countEl, barEl, timeEl) {
-  const progress = processed / total;
-  if (countEl) countEl.textContent = processed;
-  if (barEl) barEl.style.width = `${progress * 100}%`;
-  globalProgress.setProgress(progress);
-
-  if (timeEl && processed > 0) {
-    const elapsed = (Date.now() - startTime) / 1000;
-    const avgTime = elapsed / processed;
-    const remaining = (total - processed) * avgTime;
-    timeEl.textContent = remaining > 60
-      ? `~${Math.ceil(remaining / 60)} min remaining`
-      : `~${Math.ceil(remaining)}s remaining`;
-  }
-}
-
-function updateBatchStats(succeeded, failed, succeededEl, failedEl, successCountEl, failCountEl) {
-  if (succeeded > 0 && succeededEl) {
-    succeededEl.classList.remove('is-hidden');
-    if (successCountEl) successCountEl.textContent = succeeded;
-  }
-  if (failed > 0 && failedEl) {
-    failedEl.classList.remove('is-hidden');
-    if (failCountEl) failCountEl.textContent = failed;
-  }
-}
-
-/**
- * Download all processed files (single or ZIP).
- */
 async function downloadAll() {
   const processedEntries = [...state.files.entries()]
     .filter(([, entry]) => entry.status === 'done' && entry.processedData);
@@ -371,7 +562,6 @@ async function downloadAll() {
     return;
   }
 
-  // Multiple files → ZIP
   if (typeof JSZip === 'undefined') {
     showToast({ message: 'ZIP library not loaded', type: 'error' });
     return;

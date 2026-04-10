@@ -7,6 +7,25 @@ function getCSRFToken() {
   return meta ? meta.getAttribute('content') : '';
 }
 
+function isLoginRedirect(response) {
+  if (!response.redirected) return false;
+
+  try {
+    const url = new URL(response.url, window.location.origin);
+    return url.pathname === '/login';
+  } catch {
+    return false;
+  }
+}
+
+async function parseJSONError(response, fallback) {
+  try {
+    return await response.clone().json();
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Make an API request.
  * @param {string} url
@@ -16,26 +35,63 @@ function getCSRFToken() {
 export async function api(url, options = {}) {
   const defaults = {
     credentials: 'same-origin',
-    headers: {},
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'fetch',
+    },
   };
 
   const merged = { ...defaults, ...options };
+  const headers = new Headers(defaults.headers);
+
+  if (options.headers) {
+    const optionHeaders = options.headers instanceof Headers
+      ? options.headers.entries()
+      : Object.entries(options.headers);
+
+    for (const [key, value] of optionHeaders) {
+      headers.set(key, value);
+    }
+  }
+
+  merged.headers = headers;
 
   // Add CSRF token for non-GET requests
   if (merged.method && merged.method !== 'GET') {
     if (merged.body instanceof FormData) {
-      merged.body.append('csrf_token', getCSRFToken());
-    } else if (merged.headers['Content-Type'] === 'application/json') {
-      merged.headers['X-CSRFToken'] = getCSRFToken();
+      merged.body.set('csrf_token', getCSRFToken());
+    } else if (merged.headers.get('Content-Type') === 'application/json') {
+      merged.headers.set('X-CSRFToken', getCSRFToken());
     }
   }
 
   const response = await fetch(url, merged);
 
-  // Handle auth redirect
-  if (response.status === 401 || response.status === 302) {
+  if (isLoginRedirect(response)) {
     window.location.href = '/login';
     throw new Error('Session expired');
+  }
+
+  // Handle auth redirect
+  if (response.status === 401) {
+    const err = await parseJSONError(response, null);
+
+    if (err?.redirect) {
+      window.location.href = err.redirect;
+    } else {
+      window.location.href = '/login';
+    }
+
+    throw new Error('Session expired');
+  }
+
+  if (response.status === 400) {
+    const err = await parseJSONError(response, null);
+
+    if (err?.code === 'csrf_failed') {
+      window.location.reload();
+      return new Promise(() => {});
+    }
   }
 
   return response;
