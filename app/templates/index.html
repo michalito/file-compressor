@@ -142,6 +142,19 @@
                         </div>
                     </fieldset>
 
+                    <!-- Background -->
+                    <fieldset class="settings-panel__fieldset">
+                        <legend class="settings-panel__legend settings-panel__legend--toggle">
+                            <span>Background</span>
+                            <label class="watermark-toggle" for="background-toggle">
+                                <input type="checkbox" id="background-toggle" class="watermark-toggle__input sr-only">
+                                <span class="watermark-toggle__switch" aria-hidden="true"></span>
+                                <span class="sr-only">Enable background removal</span>
+                            </label>
+                        </legend>
+                        <p class="settings-panel__hint" id="background-hint">Subject isolation with rembg. Outputs a transparent PNG.</p>
+                    </fieldset>
+
                     <!-- Watermark -->
                     <fieldset class="settings-panel__fieldset settings-panel__fieldset--full">
                         <legend class="settings-panel__legend watermark-legend">

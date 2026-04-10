@@ -281,6 +281,10 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
       badges.appendChild(createBadge('Watermarked', 'info'));
     }
 
+    if (result.metadata.background_removed) {
+      badges.appendChild(createBadge('BG removed', 'info'));
+    }
+
     // Show warnings
     if (result.warnings && result.warnings.length > 0) {
       result.warnings.forEach((w) => showTileWarning(tile, w));
@@ -401,4 +405,3 @@ function formatFileSize(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
-

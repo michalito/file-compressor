@@ -1,8 +1,10 @@
 # Stage 1: Build stage
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 # Set work directory
 WORKDIR /app
+
+ENV U2NET_HOME=/opt/rembg
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,11 +17,17 @@ COPY requirements.txt .
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
+# Preload the default rembg model into the image without creating a long-lived runtime session.
+RUN mkdir -p "${U2NET_HOME}" && \
+    /opt/venv/bin/python -c "from rembg import new_session; new_session()"
+
 # Stage 2: Production stage
 FROM python:3.11-slim
 
 # Set work directory
 WORKDIR /app
+
+ENV U2NET_HOME=/opt/rembg
 
 # Install runtime dependencies and dos2unix
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /opt/rembg /opt/rembg
 
 # Set environment variables
 ENV PATH="/opt/venv/bin:$PATH" \
@@ -37,13 +46,16 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     FLASK_ENV=production \
     FLASK_APP=run.py \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    U2NET_HOME=/opt/rembg
 
 # Create non-root user and secure directories
 RUN useradd -m appuser && \
     chown -R appuser:appuser /app && \
     mkdir -p /app/instance/secrets && \
     chown -R appuser:appuser /app/instance && \
+    chown -R appuser:appuser /opt/rembg && \
+    chmod -R a+rX /opt/rembg && \
     chmod 700 /app/instance/secrets
 
 # Copy application code

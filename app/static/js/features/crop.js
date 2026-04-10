@@ -367,6 +367,7 @@ async function applyCrop() {
     // percentage stays relative to the upload, not the pre-edit size
     const prevMeta = entry.processedData.metadata;
     const mergedMetadata = {
+      ...prevMeta,
       ...result.metadata,
       original_size: prevMeta.original_size,
       original_dimensions: prevMeta.original_dimensions,

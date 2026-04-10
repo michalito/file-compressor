@@ -127,3 +127,49 @@ test('downloads ZIP files without any CDN dependency', async ({ page }) => {
 
   expect(download.suggestedFilename()).toBe('processed_images.zip');
 });
+
+test('background removal locks compression controls and sends the flag', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        compressed_data: fixtureBuffer.toString('base64'),
+        filename: 'subject.png',
+        warnings: [],
+        metadata: {
+          original_size: fixtureBuffer.length,
+          compressed_size: fixtureBuffer.length,
+          original_dimensions: [300, 300],
+          final_dimensions: [300, 300],
+          compression_ratio: 100,
+          format: 'PNG',
+          original_format: 'PNG',
+          background_removed: true,
+          watermarked: false,
+          encoding: 'base64',
+        },
+      }),
+    });
+  });
+
+  await login(page);
+  await page.locator('#background-toggle').check({ force: true });
+
+  await expect(page.locator('#compression-mode-control [data-value="lossless"]')).toBeDisabled();
+  await expect(page.locator('#format-control [data-value="png"]')).toBeDisabled();
+  await expect(page.locator('#quality-slider-group')).toHaveClass(/is-hidden/);
+
+  await uploadFiles(page, makeFiles(1, 'bg'));
+  await waitForDoneCount(page, 1);
+
+  expect(capturedRequests).toHaveLength(1);
+  expect(capturedRequests[0]).toContain('name="remove_background"');
+  expect(capturedRequests[0]).toContain('\r\n\r\n1\r\n');
+
+  await expect(page.locator('.tile__final-format')).toHaveText('PNG');
+  await expect(page.locator('.tile__status-badges')).toContainText('BG removed');
+});

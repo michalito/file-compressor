@@ -1,6 +1,7 @@
 from PIL import Image, ImageOps, ImageCms, ImageDraw, ImageFont
 import io
 import logging
+import threading
 from pathlib import Path
 from functools import lru_cache
 from typing import Tuple, Dict, Optional, List
@@ -29,6 +30,11 @@ class ImageValidationError(CompressionError):
     pass
 
 
+class BackgroundRemovalError(CompressionError):
+    """Raised when background removal fails"""
+    pass
+
+
 @dataclass
 class ValidationResult:
     is_valid: bool
@@ -40,6 +46,8 @@ class ValidationResult:
 class ImageCompressor:
     _FONT_PATH = Path(__file__).parent / 'fonts' / 'Inter-SemiBold.ttf'
     MAX_PIXELS = 40_000_000  # ~8000×5000 — reject to prevent decompression bombs
+    _background_session = None
+    _background_session_lock = threading.Lock()
 
     def __init__(self, max_file_size_mb: int = 10):
         self.max_file_size = max_file_size_mb * 1024 * 1024  # Convert MB to bytes
@@ -298,6 +306,62 @@ class ImageCompressor:
             logger.debug("Could not convert ICC profile to sRGB, using image as-is")
 
         return img
+
+    @classmethod
+    def _get_background_removal_session(cls):
+        """Create the rembg session lazily per worker process."""
+        if cls._background_session is not None:
+            return cls._background_session
+
+        with cls._background_session_lock:
+            if cls._background_session is not None:
+                return cls._background_session
+
+            try:
+                from rembg import new_session
+            except ImportError as exc:
+                logger.exception("rembg dependency is unavailable during session initialization")
+                raise BackgroundRemovalError("Background removal dependency is unavailable") from exc
+
+            try:
+                cls._background_session = new_session()
+            except Exception as exc:
+                logger.exception("Could not initialize rembg background removal session")
+                raise BackgroundRemovalError("Could not initialize background removal model") from exc
+
+        return cls._background_session
+
+    def _apply_background_removal(self, img: Image.Image) -> Tuple[Image.Image, List[str]]:
+        """Remove the image background and return an RGBA result."""
+        try:
+            from rembg import remove
+        except ImportError as exc:
+            logger.exception("rembg dependency is unavailable during background removal")
+            raise BackgroundRemovalError("Background removal dependency is unavailable") from exc
+
+        session = self._get_background_removal_session()
+
+        # rembg.remove() accepts PIL Images directly and returns a PIL Image,
+        # avoiding an unnecessary PNG encode → decode round-trip.
+        prepared = img if img.mode in ('RGB', 'RGBA') else img.convert('RGB')
+
+        try:
+            removed = remove(prepared, session=session, post_process_mask=True)
+        except Exception as exc:
+            logger.exception("rembg background removal call failed")
+            raise BackgroundRemovalError("Background removal failed") from exc
+
+        if removed.mode != 'RGBA':
+            removed = removed.convert('RGBA')
+        removed.format = 'PNG'
+
+        warnings: List[str] = []
+        if not self._has_transparency(removed):
+            warnings.append(
+                "Background removal completed, but no transparent pixels were detected"
+            )
+
+        return removed, warnings
 
     def validate_image(self, image_data: bytes) -> ValidationResult:
         """
@@ -572,11 +636,12 @@ class ImageCompressor:
         watermark_size: int = 5,
         watermark_tile_density: int = 5,
         watermark_angle: int = 0,
+        remove_background: bool = False,
     ) -> Tuple[bytes, Dict]:
         """
         Compress an image using the specified mode and parameters.
 
-        output_format: 'auto', 'webp', or 'jpeg'. In auto mode, transparent
+        output_format: 'auto', 'webp', 'jpeg', or 'png'. In auto mode, transparent
         images are output as WebP to preserve transparency; opaque images
         become JPEG.  Ignored in lossless mode.
         """
@@ -598,42 +663,49 @@ class ImageCompressor:
         # Normalize non-standard color modes (CMYK, P, PA, I, 1)
         img = self._normalize_color_mode(img)
 
-        # Convert to sRGB for web/high modes (lossless preserves original profile)
-        if mode in ('web', 'high'):
+        # Convert to sRGB when lossy processing or ML background removal is used.
+        if mode in ('web', 'high') or remove_background:
             img = self._convert_to_srgb(img)
 
         original_format = img.format
         original_size = len(image_data)
         original_dimensions = img.size
 
-        # Resolve output_format to use_webp / target_png bools
-        format_warnings: List[str] = []
-        has_transparency = self._has_transparency(img)
-        target_png = False
-
-        if mode == 'lossless' and output_format == 'auto':
-            use_webp = False  # Preserves original format
-        elif output_format == 'png':
-            target_png = True
-            use_webp = False
-        elif output_format == 'webp':
-            use_webp = True
-        elif output_format == 'jpeg':
-            use_webp = False
-            if has_transparency:
-                format_warnings.append(
-                    "JPEG does not support transparency — transparent areas will become white"
-                )
-        else:  # 'auto' (non-lossless)
-            use_webp = has_transparency
-            if has_transparency:
-                format_warnings.append(
-                    "Transparent image detected — using WebP to preserve transparency"
-                )
-
         # Resize if dimensions are provided
         if max_width or max_height:
             img = self._resize_image(img, max_width, max_height)
+
+        format_warnings: List[str] = []
+        background_removed = False
+        if remove_background:
+            img, background_warnings = self._apply_background_removal(img)
+            format_warnings.extend(background_warnings)
+            background_removed = self._has_transparency(img)
+            target_png = True
+            use_webp = False
+        else:
+            has_transparency = self._has_transparency(img)
+            target_png = False
+
+            if mode == 'lossless' and output_format == 'auto':
+                use_webp = False  # Preserves original format
+            elif output_format == 'png':
+                target_png = True
+                use_webp = False
+            elif output_format == 'webp':
+                use_webp = True
+            elif output_format == 'jpeg':
+                use_webp = False
+                if has_transparency:
+                    format_warnings.append(
+                        "JPEG does not support transparency — transparent areas will become white"
+                    )
+            else:  # 'auto' (non-lossless)
+                use_webp = has_transparency
+                if has_transparency:
+                    format_warnings.append(
+                        "Transparent image detected — using WebP to preserve transparency"
+                    )
 
         # Apply watermark after resize, before compression
         watermark_applied = False
@@ -695,6 +767,7 @@ class ImageCompressor:
             'format': resolved_format,
             'original_format': source_format or original_format,
             'format_warnings': format_warnings,
+            'background_removed': background_removed,
             'watermarked': watermark_applied,
         }
 

@@ -23,6 +23,9 @@ ALLOWED_WATERMARK_POSITIONS = {'bottom-right', 'bottom-left', 'top-right', 'top-
 ALLOWED_WATERMARK_COLORS = {'white', 'black', 'auto'}
 ALLOWED_ROTATIONS = {0, 90, 180, 270}
 
+TRUE_VALUES = {'1', 'true', 'on', 'yes'}
+FALSE_VALUES = {'0', 'false', 'off', 'no'}
+
 
 def validate_file(file: FileStorage) -> Tuple[bool, Optional[str]]:
     """
@@ -152,6 +155,24 @@ def validate_output_format(output_format: str) -> Tuple[bool, Optional[str]]:
         return False, f"Invalid output format. Allowed formats: {', '.join(ALLOWED_OUTPUT_FORMATS)}"
 
     return True, None
+
+
+def parse_boolean_form_value(value: Optional[str], field_name: str) -> Tuple[bool, Optional[bool], Optional[str]]:
+    """
+    Parse an optional HTML form boolean field.
+
+    Empty / missing values are treated as False. Non-empty invalid values fail.
+    """
+    if value is None or value == '':
+        return True, False, None
+
+    normalized = value.strip().lower()
+    if normalized in TRUE_VALUES:
+        return True, True, None
+    if normalized in FALSE_VALUES:
+        return True, False, None
+
+    return False, None, f"Invalid {field_name} value"
 
 
 def validate_theme(theme: str) -> Tuple[bool, Optional[str]]:

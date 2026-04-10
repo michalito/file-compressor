@@ -1,6 +1,6 @@
 # Compressify
 
-A self-hosted, password-protected web application for image compression and resizing. All processing happens in-memory on the server — no files are stored on disk.
+A self-hosted, password-protected web application for image compression, background removal, and resizing. All processing happens in-memory on the server — no files are stored on disk.
 
 Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**, **HEIC/HEIF**
 
@@ -10,6 +10,7 @@ Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**, **HEIC/HEIF**
 - **Output format selection**: Auto, PNG, WebP, or JPEG
 - **Quality slider** (1–100) for fine-grained control in Balanced and Maximum modes
 - **Resize** with preset dimensions (Full HD, HD, Web) or custom width/height
+- **Background removal** with rembg subject isolation and transparent PNG output
 - **Automatic processing** on upload — no manual "Process" button needed
 - **Batch processing** with 5 concurrent uploads, progress tracking, time estimates, and cancel support
 - **Re-process** when settings change, **retry** for failed files
@@ -173,6 +174,8 @@ The inline settings panel offers these controls:
 
 **Resize**: Original (no resize) or Custom with width/height inputs. Presets available: Full HD (1920x1080), HD (1280x720), Web (800x600). Aspect ratio is maintained.
 
+**Background**: Remove Background runs rembg subject isolation and forces transparent PNG output. Compression mode and output format controls are locked while it is enabled, but resize and watermark remain available.
+
 Settings persist in your browser across sessions via localStorage.
 
 ### 4. Automatic Processing
@@ -206,6 +209,7 @@ Images are **processed automatically** when uploaded — there is no manual "Pro
 Additional behaviors:
 - **Maximum mode retry**: if compression ratio exceeds 50%, retries at quality 30 for more aggressive compression
 - **Transparency**: JPEG composites transparent areas onto a white background; WebP and PNG preserve alpha channels
+- **Background removal**: runs before watermarking and always outputs a transparent PNG
 - **CMYK/Palette images**: automatically converted to RGB before processing
 - **EXIF orientation**: physically applied (rotated) before processing in all modes
 - **Progressive JPEG**: enabled in all modes for faster web rendering
@@ -217,7 +221,9 @@ Additional behaviors:
 The Dockerfile uses a multi-stage build:
 
 1. **Builder stage** — installs Python dependencies into an isolated virtual environment
-2. **Runtime stage** — copies only the venv and application code, runs as non-root user `appuser`
+2. **Runtime stage** — copies only the venv, the preloaded rembg model cache, and application code, then runs as non-root user `appuser`
+
+The production image preloads the default rembg CPU model during build and keeps it under `U2NET_HOME=/opt/rembg`. Local non-Docker development may still populate that cache on first use if the model is not already present.
 
 **Gunicorn configuration** (from Dockerfile CMD):
 - 1 worker process, 2 threads

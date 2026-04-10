@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-**Compressify** — self-hosted, password-protected image compression/resizing/watermarking web app. All processing in-memory (no files on disk).
+**Compressify** — self-hosted, password-protected image compression/resizing/background-removal/watermarking web app. All processing in-memory (no files on disk).
 
 ## Commands
 
@@ -65,7 +65,7 @@ tests/
 ### Processing Pipeline
 
 1. File validation (`validators.py`) -> image validation (`ImageCompressor.validate_image` -> `ValidationResult` dataclass with optional `.image`)
-2. EXIF orientation -> normalize color mode -> sRGB conversion -> resize -> watermark -> compress
+2. EXIF orientation -> normalize color mode -> optional sRGB conversion -> resize -> optional background removal -> watermark -> compress
 3. Response: base64-encoded image in JSON
 4. Download: client sends base64 back, `/download` decodes to binary
 
@@ -94,6 +94,14 @@ tests/
 - Tiled mode: text stamps with configurable density and angle
 - RGBA overlay compositing with shadow text for visibility
 
+### Background Removal
+
+- Uses `rembg` with the default CPU session (`new_session()`)
+- Session is created lazily per worker; do not initialize it at import time because Gunicorn runs with `--preload`
+- Runs inside the existing `/process` pipeline, before watermarking
+- Forces output to transparent PNG and sets `metadata.background_removed`
+- Docker image preloads the rembg model cache into `U2NET_HOME=/opt/rembg`
+
 ### Format Remapping
 
 Non-native formats remapped early in `validate_image()`: MPO -> JPEG, HEIF -> PNG. Requires `pillow-heif` (`register_heif_opener()` in `app/compression/__init__.py`).
@@ -106,6 +114,7 @@ Non-native formats remapped early in `validate_image()`: MPO -> JPEG, HEIF -> PN
 - Re-process detection: `processedWithSettings` snapshot compared to current settings
 - Auto-process fires via `files:autoProcess` event at end of `handleFiles()`
 - Quality defaults per mode+format in `QUALITY_DEFAULTS`; `quality: null` means use backend default
+- Background removal locks the compression UI to Lossless + PNG without overwriting the user's saved compression preferences
 - Security: `textContent`/`sanitizeText()` everywhere (no innerHTML), `crypto.randomUUID()` for file IDs
 - Login: standard form POST (not AJAX)
 - ES modules, no build tools, 5 responsive breakpoints (mobile-first)

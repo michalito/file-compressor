@@ -3,14 +3,15 @@ import io
 
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session
 
-from .compression import ImageCompressor, ImageValidationError
+from .compression import ImageCompressor, ImageValidationError, BackgroundRemovalError
 from .auth import RateLimitExceeded, login_required
 from .validators import (
     validate_file, validate_compression_mode, validate_resize_mode,
     validate_dimensions, validate_quality, validate_output_format,
     validate_theme, validate_download_data, validate_crop_coordinates,
     validate_rotation, sanitize_filename,
-    validate_watermark_text, validate_watermark_position, validate_watermark_options
+    validate_watermark_text, validate_watermark_position, validate_watermark_options,
+    parse_boolean_form_value,
 )
 from .forms import LoginForm
 
@@ -83,7 +84,8 @@ def index():
 def _process_image_file(file, compression_mode, resize_mode, max_width, max_height, quality, output_format,
                         watermark_text=None, watermark_position='bottom-right',
                         watermark_opacity=50, watermark_color='white', watermark_size=5,
-                        watermark_tile_density=5, watermark_angle=0):
+                        watermark_tile_density=5, watermark_angle=0,
+                        remove_background=False):
     """Validate, compress, encode, and build response for a single image file.
 
     Returns (response_dict, status_code) tuple.
@@ -116,6 +118,7 @@ def _process_image_file(file, compression_mode, resize_mode, max_width, max_heig
         watermark_size=watermark_size,
         watermark_tile_density=watermark_tile_density,
         watermark_angle=watermark_angle,
+        remove_background=remove_background,
     )
 
     # Encode as base64
@@ -162,6 +165,17 @@ def process_image():
     max_height = request.form.get('max_height', type=int)
     quality = request.form.get('quality', type=int)
     output_format = request.form.get('output_format', 'auto')
+    remove_background_raw = request.form.get('remove_background')
+
+    is_valid, remove_background, error_msg = parse_boolean_form_value(
+        remove_background_raw, 'remove_background')
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    if remove_background:
+        compression_mode = 'lossless'
+        output_format = 'png'
+        quality = None
 
     # Validate compression mode
     is_valid, error_msg = validate_compression_mode(compression_mode)
@@ -222,11 +236,17 @@ def process_image():
             watermark_size=watermark_size,
             watermark_tile_density=watermark_tile_density,
             watermark_angle=watermark_angle,
+            remove_background=remove_background,
         )
         return jsonify(result), status
 
+    except BackgroundRemovalError:
+        current_app.logger.exception("Background removal failed during /process")
+        return jsonify({
+            'error': 'Background removal is unavailable right now. Try again or disable Remove Background.'
+        }), 503
     except Exception as e:
-        current_app.logger.error(f"Processing failed: {e}")
+        current_app.logger.exception("Processing failed during /process")
         return jsonify({'error': 'Processing failed'}), 500
 
 

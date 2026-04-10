@@ -12,6 +12,7 @@ const defaultState = {
   settings: {
     compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
     resize: { mode: 'original', width: null, height: null },
+    background: { enabled: false },
     watermark: { enabled: false, text: '', position: 'bottom-right', opacity: 50, color: 'white', size: 5, tileDensity: 5, angle: 0 },
   },
 
@@ -32,6 +33,7 @@ function createState() {
       ...savedSettings,
       compress: { ...defaultState.settings.compress, ...(savedSettings.compress || {}) },
       resize: { ...defaultState.settings.resize, ...(savedSettings.resize || {}) },
+      background: { ...defaultState.settings.background, ...(savedSettings.background || {}) },
       watermark: { ...defaultState.settings.watermark, ...(savedSettings.watermark || {}) },
     };
   }

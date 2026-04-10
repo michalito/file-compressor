@@ -35,6 +35,9 @@ const QUALITY_DEFAULTS = {
   high: { auto: 50, webp: 40, jpeg: 60 },
 };
 
+const BACKGROUND_REMOVAL_HINT = 'Subject isolation with rembg. Outputs a transparent PNG.';
+const LOCKED_COMPRESSION_HINT = 'Background removal forces lossless transparent PNG output.';
+
 /* ── Tool FormData builders ───────────────────────────────────────── */
 
 const tools = {
@@ -44,6 +47,13 @@ const tools = {
       formData.append('output_format', settings.outputFormat || 'auto');
       if (settings.mode !== 'lossless' && settings.outputFormat !== 'png' && settings.quality != null) {
         formData.append('quality', settings.quality);
+      }
+    },
+  },
+  background: {
+    toFormData(settings, formData) {
+      if (settings.enabled) {
+        formData.append('remove_background', '1');
       }
     },
   },
@@ -86,6 +96,7 @@ export function initSettings() {
   initResizeMode();
   initPresets();
   initAspectRatio();
+  initBackground();
   initWatermark();
   initPanelPositioning();
 
@@ -93,7 +104,10 @@ export function initSettings() {
   syncControlsFromState();
 
   // Listen for external state changes
-  bus.on('settings:changed', () => updateSummary());
+  bus.on('settings:changed', () => {
+    syncCompressionControls();
+    updateSummary();
+  });
 }
 
 /* ── Panel toggle ─────────────────────────────────────────────────── */
@@ -266,6 +280,22 @@ function initAspectRatio() {
   heightInput.addEventListener('change', commitDimensions);
 }
 
+/* ── Background removal ──────────────────────────────────────────── */
+
+function initBackground() {
+  const toggle = $('#background-toggle');
+  const hint = $('#background-hint');
+  if (!toggle) return;
+
+  if (hint) hint.textContent = BACKGROUND_REMOVAL_HINT;
+
+  toggle.addEventListener('change', () => {
+    const enabled = toggle.checked;
+    updateSettings('background', { enabled });
+    syncCompressionControls();
+  });
+}
+
 /* ── Watermark ────────────────────────────────────────────────────── */
 
 function initWatermark() {
@@ -399,28 +429,54 @@ function positionPanel(hasFiles) {
   }
 }
 
+function getEffectiveCompressSettings(settings = state.settings) {
+  if (!settings.background?.enabled) {
+    return settings.compress;
+  }
+
+  return {
+    ...settings.compress,
+    mode: 'lossless',
+    outputFormat: 'png',
+    quality: null,
+  };
+}
+
+function syncCompressionControls() {
+  const compress = getEffectiveCompressSettings();
+  const backgroundEnabled = state.settings.background?.enabled;
+
+  setSegmentedValue('#compression-mode-control', compress.mode);
+  setSegmentedValue('#format-control', compress.outputFormat || 'auto');
+  setSegmentedDisabled('#compression-mode-control', backgroundEnabled);
+  setSegmentedDisabled('#format-control', backgroundEnabled);
+
+  const hint = $('#compression-hint');
+  if (hint) {
+    hint.textContent = backgroundEnabled
+      ? LOCKED_COMPRESSION_HINT
+      : (MODE_HINTS[state.settings.compress.mode] || '');
+  }
+
+  const qualitySlider = $('#quality-slider');
+  if (qualitySlider) {
+    qualitySlider.disabled = backgroundEnabled;
+  }
+
+  const hideQuality = backgroundEnabled || compress.mode === 'lossless' || compress.outputFormat === 'png';
+  toggleHidden('#quality-slider-group', hideQuality);
+  if (!hideQuality) {
+    const quality = compress.quality ?? getDefaultQuality(compress.mode, compress.outputFormat || 'auto');
+    syncSliderValue(quality);
+  }
+}
+
 /* ── Sync controls from persisted state ───────────────────────────── */
 
 function syncControlsFromState() {
-  const { compress, resize, watermark } = state.settings;
+  const { resize, background, watermark } = state.settings;
 
-  // Compression mode
-  setSegmentedValue('#compression-mode-control', compress.mode);
-  const hint = $('#compression-hint');
-  if (hint) hint.textContent = MODE_HINTS[compress.mode] || '';
-
-  const isLossless = compress.mode === 'lossless';
-  const hideQuality = isLossless || compress.outputFormat === 'png';
-  toggleHidden('#quality-slider-group', hideQuality);
-
-  // Format
-  setSegmentedValue('#format-control', compress.outputFormat || 'auto');
-
-  // Quality
-  if (!hideQuality) {
-    const q = compress.quality ?? getDefaultQuality(compress.mode, compress.outputFormat || 'auto');
-    syncSliderValue(q);
-  }
+  syncCompressionControls();
 
   // Resize
   setSegmentedValue('#resize-mode-control', resize.mode);
@@ -433,6 +489,10 @@ function syncControlsFromState() {
     const h = $('#custom-height');
     if (h) h.value = resize.height;
   }
+
+  // Background removal
+  const bgToggle = $('#background-toggle');
+  if (bgToggle) bgToggle.checked = background.enabled;
 
   // Watermark
   const wmToggle = $('#watermark-toggle');
@@ -474,7 +534,8 @@ function updateSummary() {
   const el = $('#settings-summary');
   if (!el) return;
 
-  const { compress, resize, watermark } = state.settings;
+  const { resize, background, watermark } = state.settings;
+  const compress = getEffectiveCompressSettings();
   const parts = [];
 
   // Compression
@@ -495,6 +556,10 @@ function updateSummary() {
     parts.push(`${resize.width}\u00d7${resize.height}`);
   } else {
     parts.push('Original size');
+  }
+
+  if (background.enabled) {
+    parts.push('BG removed');
   }
 
   // Watermark
@@ -569,6 +634,27 @@ function setSegmentedValue(selector, value) {
   });
 }
 
+function setSegmentedDisabled(selector, disabled) {
+  const container = $(selector);
+  if (!container) return;
+
+  container.classList.toggle('is-disabled', disabled);
+  container.setAttribute('aria-disabled', String(disabled));
+
+  const items = container.querySelectorAll('.segmented-control__item');
+  items.forEach((item) => {
+    item.disabled = disabled;
+    item.setAttribute('aria-disabled', String(disabled));
+    if (disabled) {
+      item.setAttribute('tabindex', '-1');
+    } else if (item.classList.contains('is-active')) {
+      item.setAttribute('tabindex', '0');
+    } else {
+      item.setAttribute('tabindex', '-1');
+    }
+  });
+}
+
 /* ── Utility helpers ──────────────────────────────────────────────── */
 
 function toggleHidden(selector, hidden) {
@@ -596,7 +682,11 @@ function syncSliderValue(quality) {
  */
 export function appendSettingsToFormData(formData) {
   const settings = getSettings();
+  const effectiveSettings = {
+    ...settings,
+    compress: getEffectiveCompressSettings(settings),
+  };
   Object.entries(tools).forEach(([key, tool]) => {
-    tool.toFormData(settings[key], formData);
+    tool.toFormData(effectiveSettings[key], formData);
   });
 }
