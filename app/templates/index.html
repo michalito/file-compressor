@@ -86,7 +86,10 @@
                 <div class="settings-panel__body" id="settings-body">
                     <!-- Compression -->
                     <fieldset class="settings-panel__fieldset">
-                        <legend class="settings-panel__legend">Compression</legend>
+                        <legend class="settings-panel__legend settings-panel__legend--toggle">
+                            <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-zap"/></svg>
+                            <span>Compression</span>
+                        </legend>
                         <div class="segmented-control" role="radiogroup" aria-label="Compression mode" id="compression-mode-control">
                             <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="lossless">Lossless</button>
                             <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="web">Balanced</button>
@@ -119,13 +122,16 @@
 
                     <!-- Resize -->
                     <fieldset class="settings-panel__fieldset">
-                        <legend class="settings-panel__legend">Resize</legend>
+                        <legend class="settings-panel__legend settings-panel__legend--toggle">
+                            <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-maximize"/></svg>
+                            <span>Resize</span>
+                        </legend>
                         <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Resize mode" id="resize-mode-control">
                             <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="original">Original</button>
                             <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="custom">Custom</button>
                         </div>
 
-                        <div class="is-hidden" id="custom-size-section">
+                        <div class="settings-panel__custom-section is-hidden" id="custom-size-section">
                             <div class="dimensions-row">
                                 <label class="dimensions-row__label sr-only" for="custom-width">Width</label>
                                 <input type="number" class="dimensions-row__input" id="custom-width" min="1" max="10000" placeholder="W" aria-label="Width in pixels">
@@ -145,6 +151,7 @@
                     <!-- Background -->
                     <fieldset class="settings-panel__fieldset">
                         <legend class="settings-panel__legend settings-panel__legend--toggle">
+                            <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-image"/></svg>
                             <span>Background</span>
                             <label class="watermark-toggle" for="background-toggle">
                                 <input type="checkbox" id="background-toggle" class="watermark-toggle__input sr-only">
@@ -157,7 +164,7 @@
 
                     <!-- Watermark -->
                     <fieldset class="settings-panel__fieldset settings-panel__fieldset--full">
-                        <legend class="settings-panel__legend watermark-legend">
+                        <legend class="settings-panel__legend settings-panel__legend--toggle">
                             <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-type"/></svg>
                             <span>Watermark</span>
                             <label class="watermark-toggle" for="watermark-toggle">

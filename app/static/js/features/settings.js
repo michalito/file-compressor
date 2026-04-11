@@ -451,11 +451,15 @@ function syncCompressionControls() {
   setSegmentedDisabled('#compression-mode-control', backgroundEnabled);
   setSegmentedDisabled('#format-control', backgroundEnabled);
 
-  const hint = $('#compression-hint');
-  if (hint) {
-    hint.textContent = backgroundEnabled
-      ? LOCKED_COMPRESSION_HINT
-      : (MODE_HINTS[state.settings.compress.mode] || '');
+  const compressionHint = $('#compression-hint');
+  if (compressionHint) {
+    compressionHint.textContent = MODE_HINTS[compress.mode] || '';
+  }
+
+  const backgroundHint = $('#background-hint');
+  if (backgroundHint) {
+    backgroundHint.textContent = backgroundEnabled ? LOCKED_COMPRESSION_HINT : BACKGROUND_REMOVAL_HINT;
+    backgroundHint.classList.toggle('settings-panel__hint--warning', backgroundEnabled);
   }
 
   const qualitySlider = $('#quality-slider');
