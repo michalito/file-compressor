@@ -1,10 +1,14 @@
-/* Login page — fills the space between header and footer, no scroll */
+/* Login page — fills the space between header and footer, centered */
 .login {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100%;
   padding: var(--space-4);
+  background:
+    radial-gradient(ellipse at 50% 40%, var(--color-primary-subtle) 0%, transparent 70%),
+    var(--color-background);
 }
 
 .login__card {
@@ -13,8 +17,9 @@
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
+  animation: login-card-in 0.4s ease-out;
 }
 
 .login__header {
@@ -41,6 +46,14 @@
   margin-top: var(--space-1);
 }
 
+.login__divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--space-3);
+  color: var(--color-text-tertiary);
+}
+
 .login__subtitle {
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
@@ -55,6 +68,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.login__form .btn--primary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  box-shadow: var(--shadow-lg), 0 0 0 4px var(--color-primary-subtle);
 }
 
 .login__error {
@@ -79,6 +98,18 @@
   background-color: var(--color-warning-subtle);
 }
 
+/* Card entrance */
+@keyframes login-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Small screens — tighten spacing to prevent overflow */
 @media (max-height: 500px) {
   .login__header {
@@ -89,6 +120,10 @@
     width: 40px;
     height: 40px;
     margin-bottom: var(--space-2);
+  }
+
+  .login__divider {
+    margin-top: var(--space-2);
   }
 
   .login__body {
