@@ -26,6 +26,43 @@ async function parseJSONError(response, fallback) {
   }
 }
 
+function parseRetryAfter(value) {
+  if (value == null) return null;
+
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function formatRetryAfter(seconds) {
+  if (seconds < 60) {
+    return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  }
+
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+}
+
+async function buildRequestError(response) {
+  const err = await parseJSONError(response, null);
+  const retryAfter = parseRetryAfter(err?.retry_after ?? response.headers.get('Retry-After'));
+
+  let message = err?.error;
+  let code = err?.code;
+
+  if (!message && response.status === 429) {
+    message = retryAfter != null
+      ? `Rate limit exceeded. Try again in ${formatRetryAfter(retryAfter)}.`
+      : 'Rate limit exceeded. Try again shortly.';
+    code = code || 'rate_limit_exceeded';
+  }
+
+  const error = new Error(message || `HTTP ${response.status}`);
+  error.status = response.status;
+  if (code) error.code = code;
+  if (retryAfter != null) error.retryAfter = retryAfter;
+  return error;
+}
+
 /**
  * Make an API request.
  * @param {string} url
@@ -112,8 +149,7 @@ export async function postJSON(url, data, { signal } = {}) {
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(err.error || `HTTP ${response.status}`);
+    throw await buildRequestError(response);
   }
 
   return response;
@@ -133,8 +169,7 @@ export async function postForm(url, formData, { signal } = {}) {
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(err.error || `HTTP ${response.status}`);
+    throw await buildRequestError(response);
   }
 
   return response;

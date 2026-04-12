@@ -174,6 +174,35 @@ test('background removal locks compression controls and sends the flag', async (
   await expect(page.locator('.tile__status-badges')).toContainText('BG removed');
 });
 
+test('shows a specific message when processing is rate limited', async ({ page }) => {
+  await page.route('**/process', async (route) => {
+    await route.fulfill({
+      status: 429,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: 'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.',
+        code: 'rate_limit_exceeded',
+      }),
+    });
+  });
+
+  await login(page);
+  await uploadFiles(page, makeFiles(1, 'rate-limit'));
+
+  await expect(page.locator('.tile__error')).toContainText(
+    'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.'
+  );
+  await expect(page.locator('.tile__retry-btn')).toBeVisible();
+  await expect(page.locator('.toast--warning').filter({
+    hasText: 'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.',
+  })).toHaveCount(1);
+  await expect(page.locator('.toast--warning').filter({
+    hasText: 'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.',
+  })).toContainText(
+    'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.'
+  );
+});
+
 test('closed sidebar is removed from tab order and focus returns to the toggle', async ({ page }) => {
   await login(page);
 

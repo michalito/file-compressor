@@ -1,4 +1,7 @@
+import io
 import re
+
+from PIL import Image
 
 
 UNAUTHORIZED_BODY = {
@@ -13,12 +16,24 @@ CSRF_FAILED_BODY = {
     'reload': True,
 }
 
+RATE_LIMIT_BODY = {
+    'error': 'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.',
+    'code': 'rate_limit_exceeded',
+}
+
 
 def api_headers():
     return {
         'Accept': 'application/json',
         'X-Requested-With': 'fetch',
     }
+
+
+def make_image_bytes():
+    image = Image.new('RGB', (16, 16), (64, 128, 192))
+    buffer = io.BytesIO()
+    image.save(buffer, format='PNG')
+    return buffer.getvalue()
 
 
 def login_csrf_token(client):
@@ -70,6 +85,24 @@ def test_authenticated_api_csrf_failure_returns_reload_contract(app, auth_client
 
     assert response.status_code == 400
     assert response.get_json() == CSRF_FAILED_BODY
+
+
+def test_process_rate_limit_returns_api_contract(app, auth_client):
+    app.view_functions['main.process_image'] = app.limiter.limit(
+        '1 per minute'
+    )(app.view_functions['main.process_image'])
+
+    response = auth_client.post('/process', data={
+        'file': (io.BytesIO(make_image_bytes()), 'first.png'),
+    }, headers=api_headers())
+    assert response.status_code == 200
+
+    limited = auth_client.post('/process', data={
+        'file': (io.BytesIO(make_image_bytes()), 'second.png'),
+    }, headers=api_headers())
+
+    assert limited.status_code == 429
+    assert limited.get_json() == RATE_LIMIT_BODY
 
 
 def test_login_lockout_message_after_five_failed_attempts(client):

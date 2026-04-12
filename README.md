@@ -112,6 +112,7 @@ Access at **http://localhost:5000**. Enable debug mode by setting `FLASK_DEBUG=1
 | `FLASK_ENV` | No | `development` | Set to `production` for production mode. Controls logging level, cookie security, and SECRET_KEY validation. |
 | `FLASK_DEBUG` | No | `0` | Set to `1` for debug mode with auto-reload (development only). |
 | `PROXY_FIX` | No | `false` | Set to `true` when running behind a reverse proxy (Nginx, Caddy, etc.). Enables Werkzeug's ProxyFix middleware for correct `X-Forwarded-*` header handling. |
+| `PROCESS_RATE_LIMIT` | No | `120 per minute` | Per-IP rate limit for `/process`. Raise or lower this based on expected batch size. |
 
 ### Application Limits
 
@@ -132,7 +133,7 @@ Per-IP, no daily limits:
 | Endpoint | Limit |
 |----------|-------|
 | `/login` | 10 requests/minute |
-| `/process` | 30 requests/minute |
+| `/process` | 120 requests/minute |
 | `/download` | 120 requests/minute |
 
 ### Brute Force Protection

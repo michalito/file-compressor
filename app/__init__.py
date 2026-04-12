@@ -1,10 +1,11 @@
-from flask import Flask, jsonify, session, url_for
+from flask import Flask, jsonify, request, session, url_for
 from dotenv import load_dotenv
 import os
 from werkzeug.security import generate_password_hash
 from .auth import Auth, is_api_request
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf.csrf import CSRFProtect, CSRFError
+from flask_limiter.errors import RateLimitExceeded as LimiterRateLimitExceeded
 
 def _read_version():
     for path in ('VERSION', os.path.join(os.path.dirname(__file__), '..', 'VERSION')):
@@ -119,6 +120,35 @@ def create_app():
 
         return error.description, 400
 
+    @app.errorhandler(LimiterRateLimitExceeded)
+    def handle_rate_limit_error(error):
+        response = error.get_response()
+
+        if is_api_request():
+            retry_after = response.headers.get('Retry-After')
+            message = 'Rate limit exceeded. Try again shortly.'
+
+            if request.endpoint == 'main.process_image':
+                message = 'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.'
+            elif request.endpoint == 'main.download_file':
+                message = 'Download rate limit exceeded. Try again shortly.'
+            elif request.endpoint == 'main.crop_image':
+                message = 'Crop rate limit exceeded. Try again shortly.'
+
+            payload = {
+                'error': message,
+                'code': 'rate_limit_exceeded',
+            }
+
+            headers = {}
+            if retry_after:
+                payload['retry_after'] = retry_after
+                headers['Retry-After'] = retry_after
+
+            return jsonify(payload), 429, headers
+
+        return response
+
     # Make app version available to all templates
     app.jinja_env.globals['app_version'] = _read_version()
 
@@ -132,7 +162,7 @@ def create_app():
         _get_rate_limit('LOGIN_RATE_LIMIT', "10 per minute")
     )(app.view_functions['main.login'])
     app.view_functions['main.process_image'] = limiter.limit(
-        _get_rate_limit('PROCESS_RATE_LIMIT', "30 per minute")
+        _get_rate_limit('PROCESS_RATE_LIMIT', "120 per minute")
     )(app.view_functions['main.process_image'])
     app.view_functions['main.download_file'] = limiter.limit(
         _get_rate_limit('DOWNLOAD_RATE_LIMIT', "120 per minute")

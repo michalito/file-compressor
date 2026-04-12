@@ -304,14 +304,19 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
     }
 
     console.error('Processing error:', error);
+    const isRateLimitError = error.code === 'rate_limit_exceeded' || error.status === 429;
     updateFile(fileId, { status: 'error', errorMessage: error.message });
     tile.classList.add('is-error');
-    showTileError(tile, `Processing failed: ${error.message}`);
+    showTileError(tile, isRateLimitError ? error.message : `Processing failed: ${error.message}`);
 
     // Show retry
     retryBtn.classList.remove('is-hidden');
 
-    showToast({ message: `Failed to process ${entry.file.name}`, type: 'error' });
+    showToast({
+      message: isRateLimitError ? error.message : `Failed to process ${entry.file.name}`,
+      type: isRateLimitError ? 'warning' : 'error',
+      duration: isRateLimitError ? 7000 : undefined,
+    });
   } finally {
     progressEl.classList.add('is-hidden');
     tile.classList.remove('is-processing');

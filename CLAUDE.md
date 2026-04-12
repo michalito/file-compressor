@@ -152,7 +152,7 @@ Non-native formats remapped early in `validate_image()`: MPO -> JPEG, HEIF -> PN
 | Endpoint | Limit |
 |----------|-------|
 | `/login` | 10/min |
-| `/process` | 30/min |
+| `/process` | 120/min |
 | `/crop` | 30/min |
 | `/download` | 120/min |
 
