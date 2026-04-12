@@ -11,7 +11,7 @@ const DEFAULT_HINT = 'Drop files anywhere to compress';
 export function initFooter() {
   const scrollBtn = $('#scroll-top-btn');
   const hintEl = $('#footer-hint');
-  const scrollContainer = $('#main-content');
+  const scrollContainer = $('.app-layout__content') || $('#main-content');
 
   if (!scrollBtn || !scrollContainer) return;
 

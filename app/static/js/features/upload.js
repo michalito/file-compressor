@@ -69,7 +69,6 @@ export function initApp() {
 
     workspaceEmpty.addEventListener('click', (e) => {
       if (e.target.closest('#workspace-browse-btn')) return;
-      if (e.target.closest('#settings-panel')) return;
       fileInput.click();
     });
   }

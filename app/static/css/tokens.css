@@ -87,6 +87,7 @@
   --z-base: 0;
   --z-dropdown: 100;
   --z-sticky: 200;
+  --z-drawer: 250;
   --z-modal-backdrop: 300;
   --z-modal: 400;
   --z-toast: 500;
@@ -94,6 +95,7 @@
   /* Layout */
   --header-height: 56px;
   --footer-height: 40px;
+  --sidebar-width: 340px;
 }
 
 [data-theme="dark"] {

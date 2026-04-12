@@ -212,6 +212,11 @@
             <span class="header__title">Compressify</span>
         </div>
         <div class="header__actions">
+            {% if session.get('authenticated') %}
+            <button id="sidebar-toggle" class="btn btn--icon" aria-label="Toggle settings" aria-expanded="false" aria-controls="settings-sidebar" type="button">
+                <svg class="icon" width="20" height="20"><use href="#icon-sliders"/></svg>
+            </button>
+            {% endif %}
             <button id="theme-toggle" class="btn btn--icon theme-toggle" aria-label="Toggle theme" type="button">
                 <svg class="icon icon--sun" width="20" height="20"><use href="#icon-sun"/></svg>
                 <svg class="icon icon--moon" width="20" height="20"><use href="#icon-moon"/></svg>

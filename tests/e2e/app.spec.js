@@ -157,7 +157,7 @@ test('background removal locks compression controls and sends the flag', async (
   });
 
   await login(page);
-  await page.locator('#background-toggle').check({ force: true });
+  await page.locator('label[for="background-toggle"]').click();
 
   await expect(page.locator('#compression-mode-control [data-value="lossless"]')).toBeDisabled();
   await expect(page.locator('#format-control [data-value="png"]')).toBeDisabled();
@@ -172,4 +172,198 @@ test('background removal locks compression controls and sends the flag', async (
 
   await expect(page.locator('.tile__final-format')).toHaveText('PNG');
   await expect(page.locator('.tile__status-badges')).toContainText('BG removed');
+});
+
+test('closed sidebar is removed from tab order and focus returns to the toggle', async ({ page }) => {
+  await login(page);
+
+  const toggle = page.locator('#sidebar-toggle');
+  const closeButton = page.locator('#sidebar-close');
+
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await closeButton.focus();
+  await page.keyboard.press('Enter');
+
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toBeFocused();
+
+  await page.locator('#theme-toggle').focus();
+  await page.keyboard.press('Tab');
+
+  await expect(page.getByRole('link', { name: 'Log out' })).toBeFocused();
+  await expect(closeButton).not.toBeFocused();
+});
+
+test('mobile sidebar toggles do not overwrite the desktop preference', async ({ page }) => {
+  await login(page);
+
+  await page.evaluate(() => {
+    localStorage.setItem('compressify_sidebar_open', 'true');
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-app-ready', 'true');
+
+  const toggle = page.locator('#sidebar-toggle');
+
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => {
+    document.querySelector('#sidebar-toggle').click();
+  });
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector('#sidebar-toggle')?.getAttribute('aria-expanded')))
+    .toBe('true');
+
+  await page.evaluate(() => {
+    document.querySelector('#sidebar-close').click();
+  });
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector('#sidebar-toggle')?.getAttribute('aria-expanded')))
+    .toBe('false');
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('compressify_sidebar_open')))
+    .toBe('true');
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-app-ready', 'true');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('legacy sidebar preference migrates to the new key on desktop load', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('compressify_panel_expanded', 'true');
+    localStorage.removeItem('compressify_sidebar_open');
+  });
+
+  await login(page);
+
+  const toggle = page.locator('#sidebar-toggle');
+
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('compressify_panel_expanded')))
+    .toBeNull();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('compressify_sidebar_open')))
+    .toBe('true');
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector('.app-layout')?.classList.contains('is-sidebar-transition-disabled')))
+    .toBe(false);
+});
+
+test('preset aspect ratio unlocks when a resize field is cleared', async ({ page }) => {
+  await login(page);
+
+  await page.locator('#resize-mode-control [data-value="custom"]').click();
+  await page.getByRole('button', { name: 'Full HD' }).click();
+
+  const widthInput = page.locator('#custom-width');
+  const heightInput = page.locator('#custom-height');
+
+  await widthInput.fill('1000');
+  await expect(heightInput).toHaveValue('563');
+
+  await heightInput.fill('');
+  await heightInput.type('500');
+  await expect(widthInput).toHaveValue('1000');
+});
+
+test('desktop overflow scroll stays inside the content column when the sidebar is open', async ({ page }) => {
+  await login(page);
+  await uploadFiles(page, makeFiles(18, 'overflow'));
+  await expect(page.locator('.tile')).toHaveCount(18);
+
+  const metrics = await page.evaluate(() => {
+    const main = document.querySelector('#main-content');
+    const content = document.querySelector('.app-layout__content');
+    const sidebar = document.querySelector('#settings-sidebar');
+    const header = document.querySelector('.header');
+    if (!main || !content || !sidebar || !header) return null;
+
+    content.scrollTop = 240;
+
+    return {
+      mainOverflowY: getComputedStyle(main).overflowY,
+      contentOverflowY: getComputedStyle(content).overflowY,
+      mainScrollTop: main.scrollTop,
+      contentScrollTop: content.scrollTop,
+      contentScrollHeight: content.scrollHeight,
+      contentClientHeight: content.clientHeight,
+      contentRight: Math.round(content.getBoundingClientRect().right),
+      sidebarLeft: Math.round(sidebar.getBoundingClientRect().left),
+      headerBottom: Math.round(header.getBoundingClientRect().bottom),
+      sidebarTop: Math.round(sidebar.getBoundingClientRect().top),
+    };
+  });
+
+  expect(metrics).not.toBeNull();
+  expect(metrics.mainOverflowY).toBe('hidden');
+  expect(metrics.contentOverflowY).toBe('auto');
+  expect(metrics.contentScrollHeight).toBeGreaterThan(metrics.contentClientHeight);
+  expect(metrics.contentScrollTop).toBeGreaterThan(0);
+  expect(metrics.mainScrollTop).toBe(0);
+  expect(metrics.contentRight).toBeLessThanOrEqual(metrics.sidebarLeft);
+  expect(metrics.sidebarTop).toBe(metrics.headerBottom);
+});
+
+test('sidebar keeps a visible thin scrollbar when settings overflow', async ({ page }) => {
+  await login(page);
+  await page.setViewportSize({ width: 1440, height: 420 });
+  await page.locator('label[for="watermark-toggle"]').click();
+
+  const scrollbar = await page.evaluate(() => {
+    const body = document.querySelector('#settings-body');
+    const content = document.querySelector('.app-layout__content');
+    const rules = [];
+
+    for (const sheet of document.styleSheets) {
+      try {
+        for (const rule of sheet.cssRules) {
+          if (rule.selectorText === '.sidebar__body') rules.push(rule.cssText);
+          if (rule.selectorText === '.app-layout__content') rules.push(rule.cssText);
+          if (rule.selectorText === '.sidebar__body::-webkit-scrollbar') rules.push(rule.cssText);
+        }
+      } catch {
+        // Ignore stylesheets that do not expose cssRules.
+      }
+    }
+
+    return {
+      clientHeight: body?.clientHeight ?? 0,
+      scrollHeight: body?.scrollHeight ?? 0,
+      contentOverflowY: content ? getComputedStyle(content).overflowY : '',
+      cssText: rules.join('\n'),
+    };
+  });
+
+  expect(scrollbar.scrollHeight).toBeGreaterThan(scrollbar.clientHeight);
+  expect(scrollbar.contentOverflowY).toBe('auto');
+  expect(scrollbar.cssText).toContain('scrollbar-width: thin');
+  expect(scrollbar.cssText).toContain('scrollbar-color: var(--color-border) transparent');
+  expect(scrollbar.cssText).toContain('width: 8px');
+  expect(scrollbar.cssText).not.toContain('display: none');
+});
+
+test('mobile sidebar layers stay below modal layers', async ({ page }) => {
+  await login(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const zIndex = await page.evaluate(() => {
+    const sidebar = document.querySelector('#settings-sidebar');
+    const backdrop = document.querySelector('#sidebar-backdrop');
+    const modal = document.querySelector('#crop-modal');
+    const modalContent = modal?.querySelector('.modal__content');
+
+    return {
+      sidebar: Number(getComputedStyle(sidebar).zIndex),
+      backdrop: Number(getComputedStyle(backdrop).zIndex),
+      modal: Number(getComputedStyle(modal).zIndex),
+      modalContent: Number(getComputedStyle(modalContent).zIndex),
+    };
+  });
+
+  expect(zIndex.backdrop).toBeLessThan(zIndex.modal);
+  expect(zIndex.sidebar).toBeLessThan(zIndex.modalContent);
 });

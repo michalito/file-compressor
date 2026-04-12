@@ -1,6 +1,7 @@
 /**
- * Settings: inline panel with segmented controls, quality slider, immediate apply.
- * Replaces the old modal-based settings system.
+ * Settings: right-side sidebar with accordion sections, segmented controls,
+ * quality sliders, and immediate apply. Desktop: persistent drawer.
+ * Mobile: bottom sheet with backdrop and focus trap.
  */
 import { $, $$ } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
@@ -9,7 +10,12 @@ import { state, updateSettings, getSettings } from '../state/app-state.js';
 
 /* ── Constants ────────────────────────────────────────────────────── */
 
-const PANEL_EXPANDED_KEY = 'compressify_panel_expanded';
+const SIDEBAR_OPEN_KEY = 'compressify_sidebar_open';
+const LEGACY_PANEL_EXPANDED_KEY = 'compressify_panel_expanded';
+const SIDEBAR_TRANSITION_DISABLED_CLASS = 'is-sidebar-transition-disabled';
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const MOBILE_MQ = window.matchMedia('(max-width: 640px)');
+let resizeAspectRatio = null;
 
 const MODE_HINTS = {
   lossless: 'Highest quality, preserves original format (HEIC outputs as PNG)',
@@ -86,10 +92,11 @@ const tools = {
 /* ── Initialization ───────────────────────────────────────────────── */
 
 export function initSettings() {
-  const panel = $('#settings-panel');
-  if (!panel) return;
+  const sidebar = $('#settings-sidebar');
+  if (!sidebar) return;
 
-  initToggle(panel);
+  initSidebar();
+  initSectionAccordions();
   initCompressionMode();
   initQualitySlider();
   initFormatControl();
@@ -98,7 +105,6 @@ export function initSettings() {
   initAspectRatio();
   initBackground();
   initWatermark();
-  initPanelPositioning();
 
   // Apply persisted state to controls
   syncControlsFromState();
@@ -110,25 +116,212 @@ export function initSettings() {
   });
 }
 
-/* ── Panel toggle ─────────────────────────────────────────────────── */
+/* ── Sidebar management ──────────────────────────────────────────── */
 
-function initToggle(panel) {
-  const toggle = $('#settings-toggle');
-  if (!toggle) return;
+function initSidebar() {
+  const appLayout = $('.app-layout');
+  const toggleBtn = $('#sidebar-toggle');
+  const closeBtn = $('#sidebar-close');
+  const backdrop = $('#sidebar-backdrop');
+  const sidebar = $('#settings-sidebar');
 
-  // Restore persisted preference
-  const savedExpanded = storage.getItem(PANEL_EXPANDED_KEY);
-  if (savedExpanded === false) {
-    panel.classList.remove('is-expanded');
-    toggle.setAttribute('aria-expanded', 'false');
+  if (!appLayout || !sidebar) return;
+
+  migrateLegacySidebarPreference();
+  setSidebarClosedState(true);
+
+  // Restore persisted state — default open on desktop, closed on mobile
+  const isMobile = MOBILE_MQ.matches;
+  const savedOpen = storage.getItem(SIDEBAR_OPEN_KEY);
+
+  if (!isMobile && savedOpen !== false) {
+    runWithoutSidebarTransitions(appLayout, () => {
+      openSidebar({ persist: false });
+    });
   }
 
-  toggle.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isExpanded = panel.classList.toggle('is-expanded');
-    toggle.setAttribute('aria-expanded', String(isExpanded));
-    storage.setItem(PANEL_EXPANDED_KEY, isExpanded);
+  // Toggle button in header
+  toggleBtn?.addEventListener('click', () => toggleSidebar());
+
+  // Close button inside sidebar
+  closeBtn?.addEventListener('click', () => closeSidebar());
+
+  // Backdrop click (mobile)
+  backdrop?.addEventListener('click', () => closeSidebar());
+
+  // Escape key closes on mobile
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isSidebarOpen() && MOBILE_MQ.matches) {
+      closeSidebar();
+    }
   });
+
+  // Auto-close on mobile when first files arrive
+  let hadFiles = false;
+  bus.on('files:countChanged', ({ total }) => {
+    const hasFiles = total > 0;
+    if (hasFiles && !hadFiles && MOBILE_MQ.matches) {
+      closeSidebar({ persist: false, restoreFocus: false });
+    }
+    hadFiles = hasFiles;
+  });
+
+  // Handle viewport resize between desktop/mobile modes
+  MOBILE_MQ.addEventListener('change', (e) => {
+    if (e.matches) {
+      // Switched to mobile — close sidebar without overwriting desktop preference
+      if (isSidebarOpen()) closeSidebar({ persist: false, restoreFocus: false });
+    } else {
+      // Switched to desktop — clean up mobile ARIA and restore saved state
+      sidebar?.removeAttribute('role');
+      sidebar?.removeAttribute('aria-modal');
+      document.body.style.overflow = '';
+      sidebar?.removeEventListener('keydown', trapFocus);
+      // Restore desktop sidebar from persisted preference
+      const savedOpen = storage.getItem(SIDEBAR_OPEN_KEY);
+      if (savedOpen !== false) openSidebar({ persist: false });
+    }
+  });
+}
+
+function migrateLegacySidebarPreference() {
+  const legacyValue = storage.getItem(LEGACY_PANEL_EXPANDED_KEY);
+  if (legacyValue === null) return;
+
+  if (storage.getItem(SIDEBAR_OPEN_KEY) === null) {
+    storage.setItem(SIDEBAR_OPEN_KEY, legacyValue);
+  }
+
+  storage.removeItem(LEGACY_PANEL_EXPANDED_KEY);
+}
+
+function runWithoutSidebarTransitions(appLayout, callback) {
+  appLayout.classList.add(SIDEBAR_TRANSITION_DISABLED_CLASS);
+  callback();
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      appLayout.classList.remove(SIDEBAR_TRANSITION_DISABLED_CLASS);
+    });
+  });
+}
+
+function initSectionAccordions() {
+  $$('.sidebar__section[data-section]').forEach((section) => {
+    const header = section.querySelector('.sidebar__section-header');
+    // Only wire up accordion on button headers (not static toggle headers)
+    if (!header || header.classList.contains('sidebar__section-header--static')) return;
+
+    header.addEventListener('click', () => {
+      const isOpen = section.classList.toggle('is-open');
+      header.setAttribute('aria-expanded', String(isOpen));
+    });
+  });
+}
+
+function toggleSidebar() {
+  if (isSidebarOpen()) {
+    closeSidebar();
+  } else {
+    openSidebar();
+  }
+}
+
+function openSidebar({ persist = shouldPersistSidebarState() } = {}) {
+  const appLayout = $('.app-layout');
+  const toggleBtn = $('#sidebar-toggle');
+  const sidebar = $('#settings-sidebar');
+
+  setSidebarClosedState(false);
+  appLayout?.classList.add('is-sidebar-open');
+  toggleBtn?.setAttribute('aria-expanded', 'true');
+
+  if (MOBILE_MQ.matches) {
+    document.body.style.overflow = 'hidden';
+    sidebar?.setAttribute('role', 'dialog');
+    sidebar?.setAttribute('aria-modal', 'true');
+    // Focus first focusable element
+    requestAnimationFrame(() => {
+      const firstFocusable = sidebar?.querySelector(FOCUSABLE_SELECTOR);
+      firstFocusable?.focus();
+    });
+    sidebar?.addEventListener('keydown', trapFocus);
+  } else {
+    document.body.style.overflow = '';
+    sidebar?.removeAttribute('role');
+    sidebar?.removeAttribute('aria-modal');
+    sidebar?.removeEventListener('keydown', trapFocus);
+  }
+
+  if (persist) storage.setItem(SIDEBAR_OPEN_KEY, true);
+}
+
+function closeSidebar({
+  persist = shouldPersistSidebarState(),
+  restoreFocus = MOBILE_MQ.matches || isFocusInsideSidebar(),
+} = {}) {
+  const appLayout = $('.app-layout');
+  const toggleBtn = $('#sidebar-toggle');
+  const sidebar = $('#settings-sidebar');
+
+  appLayout?.classList.remove('is-sidebar-open');
+  toggleBtn?.setAttribute('aria-expanded', 'false');
+  setSidebarClosedState(true);
+
+  if (MOBILE_MQ.matches) {
+    document.body.style.overflow = '';
+    sidebar?.removeAttribute('role');
+    sidebar?.removeAttribute('aria-modal');
+    sidebar?.removeEventListener('keydown', trapFocus);
+  }
+
+  if (restoreFocus) toggleBtn?.focus();
+  if (persist) storage.setItem(SIDEBAR_OPEN_KEY, false);
+}
+
+function isSidebarOpen() {
+  return $('.app-layout')?.classList.contains('is-sidebar-open') ?? false;
+}
+
+function shouldPersistSidebarState() {
+  return !MOBILE_MQ.matches;
+}
+
+function setSidebarClosedState(closed) {
+  const sidebar = $('#settings-sidebar');
+  if (!sidebar) return;
+
+  sidebar.toggleAttribute('inert', closed);
+  sidebar.setAttribute('aria-hidden', String(closed));
+}
+
+function isFocusInsideSidebar() {
+  const sidebar = $('#settings-sidebar');
+  return !!sidebar && sidebar.contains(document.activeElement);
+}
+
+function trapFocus(e) {
+  if (e.key !== 'Tab') return;
+
+  const sidebar = $('#settings-sidebar');
+  if (!sidebar) return;
+
+  const focusable = [...sidebar.querySelectorAll(FOCUSABLE_SELECTOR)].filter(
+    (el) => !el.disabled && el.offsetParent !== null
+  );
+
+  if (focusable.length === 0) return;
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 /* ── Compression mode segmented control ───────────────────────────── */
@@ -202,6 +395,7 @@ function initResizeMode() {
     toggleHidden('#custom-size-section', value !== 'custom');
 
     if (value === 'original') {
+      resizeAspectRatio = null;
       updateSettings('resize', { mode: value, width: null, height: null });
     } else {
       const w = parseInt($('#custom-width')?.value, 10) || null;
@@ -223,6 +417,7 @@ function initPresets() {
       const heightInput = $('#custom-height');
       if (widthInput) widthInput.value = w;
       if (heightInput) heightInput.value = h;
+      resizeAspectRatio = w / h;
 
       // Ensure custom mode is active
       setSegmentedValue('#resize-mode-control', 'custom');
@@ -240,31 +435,32 @@ function initAspectRatio() {
   const heightInput = $('#custom-height');
   if (!widthInput || !heightInput) return;
 
-  let aspectRatio = null;
   let updating = false;
 
   const syncOther = (changed, other) => {
-    if (!aspectRatio || updating) return;
+    if (!resizeAspectRatio || updating) return;
     updating = true;
     const val = parseInt(changed.value, 10);
     if (!isNaN(val)) {
       other.value = changed === widthInput
-        ? Math.round(val / aspectRatio)
-        : Math.round(val * aspectRatio);
+        ? Math.round(val / resizeAspectRatio)
+        : Math.round(val * resizeAspectRatio);
     }
     updating = false;
   };
 
   widthInput.addEventListener('input', () => {
-    if (!aspectRatio && heightInput.value) {
-      aspectRatio = parseInt(widthInput.value, 10) / parseInt(heightInput.value, 10);
+    if (!widthInput.value || !heightInput.value) {
+      resizeAspectRatio = null;
+      return;
     }
     syncOther(widthInput, heightInput);
   });
 
   heightInput.addEventListener('input', () => {
-    if (!aspectRatio && widthInput.value) {
-      aspectRatio = parseInt(widthInput.value, 10) / parseInt(heightInput.value, 10);
+    if (!widthInput.value || !heightInput.value) {
+      resizeAspectRatio = null;
+      return;
     }
     syncOther(heightInput, widthInput);
   });
@@ -287,10 +483,9 @@ function initBackground() {
   const hint = $('#background-hint');
   if (!toggle) return;
 
-  if (hint) hint.textContent = BACKGROUND_REMOVAL_HINT;
-
   toggle.addEventListener('change', () => {
     const enabled = toggle.checked;
+    if (hint) hint.classList.toggle('is-hidden', !enabled);
     updateSettings('background', { enabled });
     syncCompressionControls();
   });
@@ -384,51 +579,6 @@ function initWatermark() {
   }
 }
 
-/* ── Panel positioning ────────────────────────────────────────────── */
-
-function initPanelPositioning() {
-  let hadFiles = false;
-
-  bus.on('files:countChanged', ({ total }) => {
-    const hasFiles = total > 0;
-    // Auto-collapse when files first appear (empty → has files)
-    if (hasFiles && !hadFiles) {
-      collapsePanel();
-    }
-    hadFiles = hasFiles;
-    positionPanel(hasFiles);
-  });
-}
-
-function collapsePanel() {
-  const panel = $('#settings-panel');
-  const toggle = $('#settings-toggle');
-  if (panel) panel.classList.remove('is-expanded');
-  if (toggle) toggle.setAttribute('aria-expanded', 'false');
-}
-
-function positionPanel(hasFiles) {
-  const panel = $('#settings-panel');
-  if (!panel) return;
-
-  const emptyState = $('#workspace-empty');
-  const toolbar = $('#workspace-toolbar');
-  const workspace = $('.workspace');
-
-  if (hasFiles && toolbar && workspace) {
-    // Move panel after toolbar
-    toolbar.after(panel);
-  } else if (!hasFiles && emptyState) {
-    // Move panel back into empty state, before the formats text
-    const formats = emptyState.querySelector('.workspace__empty-formats');
-    if (formats) {
-      emptyState.insertBefore(panel, formats);
-    } else {
-      emptyState.appendChild(panel);
-    }
-  }
-}
-
 function getEffectiveCompressSettings(settings = state.settings) {
   if (!settings.background?.enabled) {
     return settings.compress;
@@ -459,7 +609,8 @@ function syncCompressionControls() {
   const backgroundHint = $('#background-hint');
   if (backgroundHint) {
     backgroundHint.textContent = backgroundEnabled ? LOCKED_COMPRESSION_HINT : BACKGROUND_REMOVAL_HINT;
-    backgroundHint.classList.toggle('settings-panel__hint--warning', backgroundEnabled);
+    backgroundHint.classList.toggle('sidebar__hint--warning', backgroundEnabled);
+    backgroundHint.classList.toggle('is-hidden', !backgroundEnabled);
   }
 
   const qualitySlider = $('#quality-slider');
