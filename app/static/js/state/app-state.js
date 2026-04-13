@@ -6,26 +6,270 @@ import { bus } from '../lib/events.js';
 import * as storage from '../lib/storage.js';
 
 const STORAGE_KEY = 'compressify_settings';
+export const WATERMARK_LAYER_KEYS = ['text', 'logo', 'qr'];
 
-const defaultState = {
-  // Settings (persisted)
-  settings: {
-    compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
-    resize: { mode: 'original', width: null, height: null },
-    background: { enabled: false },
-    watermark: { enabled: false, text: '', position: 'bottom-right', opacity: 50, color: 'white', size: 5, tileDensity: 5, angle: 0 },
-  },
-
-  // Files (runtime only)
-  files: new Map(),          // fileId → { file, status, blobUrl, processedData, processedWithSettings }
-
-  // UI state
-  processing: false,
-  batchProgress: { processed: 0, total: 0, startTime: null },
+const defaultWatermarkLayer = {
+  enabled: false,
+  position: 'bottom-right',
+  opacity: 50,
+  size: 5,
+  angle: 0,
+  tileDensity: 5,
 };
 
+const defaultSettings = {
+  compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
+  resize: { mode: 'original', width: null, height: null },
+  background: { enabled: false },
+  watermark: {
+    enabled: false,
+    text: { ...defaultWatermarkLayer, value: '', color: 'white' },
+    logo: { ...defaultWatermarkLayer },
+    qr: { ...defaultWatermarkLayer, url: '' },
+  },
+};
+
+function cloneDefaultWatermarkSettings() {
+  return {
+    enabled: defaultSettings.watermark.enabled,
+    text: { ...defaultSettings.watermark.text },
+    logo: { ...defaultSettings.watermark.logo },
+    qr: { ...defaultSettings.watermark.qr },
+  };
+}
+
+function cloneDefaultSettings() {
+  return {
+    compress: { ...defaultSettings.compress },
+    resize: { ...defaultSettings.resize },
+    background: { ...defaultSettings.background },
+    watermark: cloneDefaultWatermarkSettings(),
+  };
+}
+
+function createDefaultState() {
+  return {
+    settings: cloneDefaultSettings(),
+    files: new Map(),          // fileId → { file, status, blobUrl, processedData, processedWithSettings }
+    ui: {
+      watermarkPreviewFileId: null,
+      watermarkActiveTab: null,
+    },
+    runtime: {
+      watermarkLogo: null,
+      watermarkQr: null,
+    },
+    processing: false,
+    batchProgress: { processed: 0, total: 0, startTime: null },
+  };
+}
+
+function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeDeep(target, updates) {
+  if (!isPlainObject(target) || !isPlainObject(updates)) {
+    return updates;
+  }
+
+  const next = { ...target };
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (isPlainObject(value) && isPlainObject(target[key])) {
+      next[key] = mergeDeep(target[key], value);
+    } else {
+      next[key] = value;
+    }
+  }
+
+  return next;
+}
+
+function getLegacyWatermarkTransform(savedWatermark = {}) {
+  return {
+    position: savedWatermark.position ?? defaultWatermarkLayer.position,
+    opacity: savedWatermark.opacity ?? defaultWatermarkLayer.opacity,
+    size: savedWatermark.size ?? defaultWatermarkLayer.size,
+    angle: savedWatermark.angle ?? defaultWatermarkLayer.angle,
+    tileDensity: savedWatermark.tileDensity ?? defaultWatermarkLayer.tileDensity,
+  };
+}
+
+function migrateWatermarkSettings(savedWatermark = {}) {
+  const watermark = cloneDefaultWatermarkSettings();
+  const legacySharedTransform = getLegacyWatermarkTransform(savedWatermark);
+  const legacyText = typeof savedWatermark.text === 'string'
+    ? savedWatermark.text
+    : savedWatermark.text?.value ?? '';
+  const legacyTextColor = typeof savedWatermark.color === 'string'
+    ? savedWatermark.color
+    : savedWatermark.text?.color ?? defaultSettings.watermark.text.color;
+
+  watermark.enabled = Boolean(savedWatermark.enabled);
+
+  watermark.text = {
+    ...defaultSettings.watermark.text,
+    ...legacySharedTransform,
+    ...(isPlainObject(savedWatermark.text) ? savedWatermark.text : {}),
+    value: legacyText,
+    enabled: isPlainObject(savedWatermark.text)
+      ? savedWatermark.text.enabled ?? Boolean(legacyText)
+      : Boolean(legacyText),
+    color: legacyTextColor,
+  };
+
+  watermark.logo = {
+    ...defaultSettings.watermark.logo,
+    ...legacySharedTransform,
+    ...(isPlainObject(savedWatermark.logo) ? savedWatermark.logo : {}),
+  };
+
+  watermark.qr = {
+    ...defaultSettings.watermark.qr,
+    ...legacySharedTransform,
+    ...(isPlainObject(savedWatermark.qr) ? savedWatermark.qr : {}),
+    url: savedWatermark.qr?.url ?? defaultSettings.watermark.qr.url,
+  };
+
+  return watermark;
+}
+
+function getNormalizedLayerTransform(layerSettings, defaults) {
+  return {
+    position: layerSettings?.position ?? defaults.position,
+    opacity: layerSettings?.opacity ?? defaults.opacity,
+    size: layerSettings?.size ?? defaults.size,
+    angle: layerSettings?.angle ?? defaults.angle,
+    tileDensity: layerSettings?.tileDensity ?? defaults.tileDensity,
+  };
+}
+
+function getTextLayerStatus(watermark, runtime) {
+  const layer = watermark?.text ?? defaultSettings.watermark.text;
+  const value = (layer.value || '').trim();
+
+  if (!layer.enabled) {
+    return { label: 'Off', tone: 'off', message: null };
+  }
+
+  if (!value) {
+    return {
+      label: 'Invalid',
+      tone: 'invalid',
+      message: 'Enter watermark text to enable this layer.',
+    };
+  }
+
+  return { label: 'Ready', tone: 'ready', message: null };
+}
+
+function getLogoLayerStatus(watermark, runtime) {
+  const layer = watermark?.logo ?? defaultSettings.watermark.logo;
+
+  if (!layer.enabled) {
+    return { label: 'Off', tone: 'off', message: null };
+  }
+
+  if (!runtime?.watermarkLogo?.file) {
+    return {
+      label: 'Needs file',
+      tone: 'pending',
+      message: 'Upload a PNG logo to enable this layer.',
+    };
+  }
+
+  return { label: 'Ready', tone: 'ready', message: null };
+}
+
+function getQrLayerStatus(watermark, runtime) {
+  const layer = watermark?.qr ?? defaultSettings.watermark.qr;
+  const value = (layer.url || '').trim();
+
+  if (!layer.enabled) {
+    return { label: 'Off', tone: 'off', message: null };
+  }
+
+  if (!value) {
+    return {
+      label: 'Needs URL',
+      tone: 'pending',
+      message: 'Enter an absolute http:// or https:// URL.',
+    };
+  }
+
+  if (runtime?.watermarkQr?.error) {
+    return {
+      label: 'Invalid',
+      tone: 'invalid',
+      message: runtime.watermarkQr.error,
+    };
+  }
+
+  return { label: 'Ready', tone: 'ready', message: null };
+}
+
+export function getWatermarkLayerStatus(layerKey, watermark = state.settings.watermark, runtime = state.runtime) {
+  if (layerKey === 'text') return getTextLayerStatus(watermark, runtime);
+  if (layerKey === 'logo') return getLogoLayerStatus(watermark, runtime);
+  if (layerKey === 'qr') return getQrLayerStatus(watermark, runtime);
+  return { label: 'Off', tone: 'off', message: null };
+}
+
+function getActiveWatermark(watermark = state.settings.watermark, runtime = state.runtime) {
+  const masterEnabled = Boolean(watermark?.enabled);
+  const textSettings = watermark?.text ?? defaultSettings.watermark.text;
+  const logoSettings = watermark?.logo ?? defaultSettings.watermark.logo;
+  const qrSettings = watermark?.qr ?? defaultSettings.watermark.qr;
+
+  const textValue = (textSettings.value || '').trim();
+  const qrUrl = (qrSettings.url || '').trim();
+
+  const textEnabled = Boolean(masterEnabled && textSettings.enabled && textValue);
+  const logoEnabled = Boolean(masterEnabled && logoSettings.enabled && runtime?.watermarkLogo?.file);
+  const qrEnabled = Boolean(masterEnabled && qrSettings.enabled && qrUrl && runtime?.watermarkQr?.blob && !runtime?.watermarkQr?.error);
+
+  const layers = [];
+  if (textEnabled) layers.push('text');
+  if (logoEnabled) layers.push('logo');
+  if (qrEnabled) layers.push('qr');
+
+  return {
+    enabled: masterEnabled && layers.length > 0,
+    layers,
+    text: {
+      enabled: textEnabled,
+      value: textValue,
+      color: textSettings.color ?? defaultSettings.watermark.text.color,
+      ...getNormalizedLayerTransform(textSettings, defaultSettings.watermark.text),
+    },
+    logo: {
+      enabled: logoEnabled,
+      ...getNormalizedLayerTransform(logoSettings, defaultSettings.watermark.logo),
+      fingerprint: logoEnabled
+        ? {
+            name: runtime.watermarkLogo.name,
+            size: runtime.watermarkLogo.size,
+            lastModified: runtime.watermarkLogo.lastModified,
+          }
+        : null,
+    },
+    qr: {
+      enabled: qrEnabled,
+      url: qrEnabled ? qrUrl : '',
+      error: runtime?.watermarkQr?.error || null,
+      ...getNormalizedLayerTransform(qrSettings, defaultSettings.watermark.qr),
+    },
+  };
+}
+
+function revokeObjectUrl(url) {
+  if (url) URL.revokeObjectURL(url);
+}
+
 function createState() {
-  // Load persisted settings
+  const defaultState = createDefaultState();
+
   const savedSettings = storage.getItem(STORAGE_KEY);
   if (savedSettings) {
     defaultState.settings = {
@@ -34,7 +278,7 @@ function createState() {
       compress: { ...defaultState.settings.compress, ...(savedSettings.compress || {}) },
       resize: { ...defaultState.settings.resize, ...(savedSettings.resize || {}) },
       background: { ...defaultState.settings.background, ...(savedSettings.background || {}) },
-      watermark: { ...defaultState.settings.watermark, ...(savedSettings.watermark || {}) },
+      watermark: migrateWatermarkSettings(savedSettings.watermark || {}),
     };
   }
 
@@ -45,11 +289,11 @@ export const state = createState();
 
 /**
  * Update settings and persist to localStorage.
- * @param {string} tool - 'compress' or 'resize'
+ * @param {string} tool - tool key from settings
  * @param {Object} values
  */
 export function updateSettings(tool, values) {
-  state.settings[tool] = { ...state.settings[tool], ...values };
+  state.settings[tool] = mergeDeep(state.settings[tool], values);
   storage.setItem(STORAGE_KEY, state.settings);
   bus.emit('settings:changed', { tool, settings: state.settings[tool] });
 }
@@ -59,6 +303,87 @@ export function updateSettings(tool, values) {
  */
 export function getSettings() {
   return state.settings;
+}
+
+export function getEffectiveWatermarkState() {
+  return getActiveWatermark();
+}
+
+export function getProcessingSnapshot() {
+  const watermark = getActiveWatermark();
+
+  return {
+    compress: { ...state.settings.compress },
+    resize: { ...state.settings.resize },
+    background: { ...state.settings.background },
+    watermark: {
+      enabled: watermark.enabled,
+      layers: [...watermark.layers],
+      text: watermark.text.enabled ? {
+        value: watermark.text.value,
+        color: watermark.text.color,
+        position: watermark.text.position,
+        opacity: watermark.text.opacity,
+        size: watermark.text.size,
+        angle: watermark.text.angle,
+        tileDensity: watermark.text.tileDensity,
+      } : null,
+      logo: watermark.logo.enabled ? {
+        ...watermark.logo.fingerprint,
+        position: watermark.logo.position,
+        opacity: watermark.logo.opacity,
+        size: watermark.logo.size,
+        angle: watermark.logo.angle,
+        tileDensity: watermark.logo.tileDensity,
+      } : null,
+      qr: watermark.qr.enabled ? {
+        url: watermark.qr.url,
+        position: watermark.qr.position,
+        opacity: watermark.qr.opacity,
+        size: watermark.qr.size,
+        angle: watermark.qr.angle,
+        tileDensity: watermark.qr.tileDensity,
+      } : null,
+    },
+  };
+}
+
+export function setWatermarkPreviewFileId(fileId) {
+  state.ui.watermarkPreviewFileId = fileId || null;
+  bus.emit('watermark:previewFileChanged', { fileId: state.ui.watermarkPreviewFileId });
+}
+
+export function setWatermarkActiveTab(layerKey) {
+  state.ui.watermarkActiveTab = WATERMARK_LAYER_KEYS.includes(layerKey) ? layerKey : 'text';
+  bus.emit('watermark:activeTabChanged', { layer: state.ui.watermarkActiveTab });
+}
+
+export function setWatermarkLogoAsset(asset) {
+  revokeObjectUrl(state.runtime.watermarkLogo?.objectUrl);
+  state.runtime.watermarkLogo = asset ? { ...asset } : null;
+  bus.emit('watermark:logoChanged', {
+    asset: state.runtime.watermarkLogo
+      ? {
+          name: state.runtime.watermarkLogo.name,
+          size: state.runtime.watermarkLogo.size,
+          lastModified: state.runtime.watermarkLogo.lastModified,
+        }
+      : null,
+  });
+}
+
+export function setWatermarkQrAsset(asset) {
+  revokeObjectUrl(state.runtime.watermarkQr?.objectUrl);
+  state.runtime.watermarkQr = asset ? { ...asset } : null;
+  bus.emit('watermark:qrChanged', {
+    asset: state.runtime.watermarkQr
+      ? {
+          url: state.runtime.watermarkQr.url,
+          error: state.runtime.watermarkQr.error || null,
+          hasBlob: Boolean(state.runtime.watermarkQr.blob),
+        }
+      : null,
+  });
 }
 
 /**
@@ -112,6 +437,7 @@ export function clearAllFiles() {
     if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl);
   }
   state.files.clear();
+  setWatermarkPreviewFileId(null);
   bus.emit('files:cleared');
   bus.emit('files:countChanged', { total: 0 });
 }

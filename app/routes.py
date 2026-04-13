@@ -2,6 +2,7 @@ import base64
 import io
 
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session
+from PIL import Image
 
 from .compression import ImageCompressor, ImageValidationError, BackgroundRemovalError
 from .auth import RateLimitExceeded, login_required
@@ -10,7 +11,9 @@ from .validators import (
     validate_dimensions, validate_quality, validate_output_format,
     validate_theme, validate_download_data, validate_crop_coordinates,
     validate_rotation, sanitize_filename,
-    validate_watermark_text, validate_watermark_position, validate_watermark_options,
+    validate_watermark_text, validate_watermark_color, validate_watermark_layer_options,
+    validate_watermark_logo, validate_watermark_qr_url, validate_watermark_qr_image,
+    MAX_WATERMARK_IMAGE_PIXELS,
     parse_boolean_form_value,
 )
 from .forms import LoginForm
@@ -35,6 +38,36 @@ FORMAT_EXTENSIONS = {
     'WEBP': '.webp',
     'TIFF': '.tiff'
 }
+
+
+def _load_rgba_image(file):
+    if not file:
+        return None
+
+    stream = file.stream
+    pos = stream.tell()
+    stream.seek(0)
+
+    try:
+        with Image.open(stream) as image:
+            width, height = image.size
+            if width * height > MAX_WATERMARK_IMAGE_PIXELS:
+                raise ValueError('Watermark image exceeds the maximum supported pixel count')
+
+            image.load()
+            return image.convert('RGBA')
+    finally:
+        stream.seek(pos)
+
+
+def _get_watermark_layer_options(prefix: str):
+    return {
+        'position': request.form.get(f'watermark_{prefix}_position', 'bottom-right'),
+        'opacity': request.form.get(f'watermark_{prefix}_opacity', 50, type=int),
+        'size': request.form.get(f'watermark_{prefix}_size', 5, type=int),
+        'angle': request.form.get(f'watermark_{prefix}_angle', 0, type=int),
+        'tile_density': request.form.get(f'watermark_{prefix}_tile_density', 5, type=int),
+    }
 
 
 @main.route('/login', methods=['GET', 'POST'])
@@ -82,10 +115,7 @@ def index():
 
 
 def _process_image_file(file, compression_mode, resize_mode, max_width, max_height, quality, output_format,
-                        watermark_text=None, watermark_position='bottom-right',
-                        watermark_opacity=50, watermark_color='white', watermark_size=5,
-                        watermark_tile_density=5, watermark_angle=0,
-                        remove_background=False):
+                        watermark_layers=None, remove_background=False):
     """Validate, compress, encode, and build response for a single image file.
 
     Returns (response_dict, status_code) tuple.
@@ -111,13 +141,7 @@ def _process_image_file(file, compression_mode, resize_mode, max_width, max_heig
         quality,
         output_format=output_format,
         preloaded_image=validation.image,
-        watermark_text=watermark_text,
-        watermark_position=watermark_position,
-        watermark_opacity=watermark_opacity,
-        watermark_color=watermark_color,
-        watermark_size=watermark_size,
-        watermark_tile_density=watermark_tile_density,
-        watermark_angle=watermark_angle,
+        watermark_layers=watermark_layers,
         remove_background=remove_background,
     )
 
@@ -204,38 +228,74 @@ def process_image():
 
     # Get watermark parameters (optional)
     watermark_text = request.form.get('watermark_text', '').strip() or None
-    watermark_position = request.form.get('watermark_position', 'bottom-right')
-    watermark_opacity = request.form.get('watermark_opacity', 50, type=int)
-    watermark_color = request.form.get('watermark_color', 'white')
-    watermark_size = request.form.get('watermark_size', 5, type=int)
-    watermark_tile_density = request.form.get('watermark_tile_density', 5, type=int)
-    watermark_angle = request.form.get('watermark_angle', 0, type=int)
+    watermark_text_color = request.form.get('watermark_text_color', 'white')
+    watermark_logo = request.files.get('watermark_logo')
+    watermark_qr_url = request.form.get('watermark_qr_url', '').strip() or None
+    watermark_qr_image = request.files.get('watermark_qr_image')
+    watermark_layers = {}
 
-    # Validate watermark params if text is provided
     if watermark_text:
         is_valid, error_msg = validate_watermark_text(watermark_text)
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        is_valid, error_msg = validate_watermark_position(watermark_position)
+        is_valid, error_msg = validate_watermark_color(watermark_text_color)
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        is_valid, error_msg = validate_watermark_options(watermark_opacity, watermark_size, watermark_color, watermark_tile_density, watermark_angle)
+        text_options = _get_watermark_layer_options('text')
+        is_valid, error_msg = validate_watermark_layer_options(**text_options)
         if not is_valid:
             return jsonify({'error': error_msg}), 400
+
+        watermark_layers['text'] = {
+            'value': watermark_text,
+            'color': watermark_text_color,
+            **text_options,
+        }
+
+    if watermark_logo:
+        is_valid, error_msg = validate_watermark_logo(watermark_logo)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        logo_options = _get_watermark_layer_options('logo')
+        is_valid, error_msg = validate_watermark_layer_options(**logo_options)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        watermark_layers['logo'] = logo_options
+
+    if watermark_qr_url or watermark_qr_image:
+        is_valid, error_msg = validate_watermark_qr_url(watermark_qr_url)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        is_valid, error_msg = validate_watermark_qr_image(watermark_qr_image)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        qr_options = _get_watermark_layer_options('qr')
+        is_valid, error_msg = validate_watermark_layer_options(**qr_options)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        watermark_layers['qr'] = {
+            'url': watermark_qr_url,
+            **qr_options,
+        }
 
     try:
+        if 'logo' in watermark_layers:
+            watermark_layers['logo']['image'] = _load_rgba_image(watermark_logo)
+
+        if 'qr' in watermark_layers:
+            watermark_layers['qr']['image'] = _load_rgba_image(watermark_qr_image)
+
         result, status = _process_image_file(
             file, compression_mode, resize_mode,
             max_width, max_height, quality, output_format,
-            watermark_text=watermark_text,
-            watermark_position=watermark_position,
-            watermark_opacity=watermark_opacity,
-            watermark_color=watermark_color,
-            watermark_size=watermark_size,
-            watermark_tile_density=watermark_tile_density,
-            watermark_angle=watermark_angle,
+            watermark_layers=watermark_layers or None,
             remove_background=remove_background,
         )
         return jsonify(result), status
@@ -245,6 +305,8 @@ def process_image():
         return jsonify({
             'error': 'Background removal is unavailable right now. Try again or disable Remove Background.'
         }), 503
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         current_app.logger.exception("Processing failed during /process")
         return jsonify({'error': 'Processing failed'}), 500

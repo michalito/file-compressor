@@ -63,11 +63,51 @@ class ImageCompressor:
         """Load and cache font at the given pixel size (thread-safe via lru_cache)."""
         return ImageFont.truetype(str(ImageCompressor._FONT_PATH), size)
 
-    def _apply_watermark(self, img: Image.Image, text: str, position: str = 'bottom-right',
-                         opacity: int = 50, color: str = 'white',
-                         relative_size: int = 5,
-                         tile_density: int = 5,
-                         angle: int = 0) -> Tuple[Image.Image, bool]:
+    @staticmethod
+    def _get_text_watermark_font_px(width: int, height: int, relative_size: int) -> int:
+        return max(12, int(min(width, height) * relative_size * 0.5 / 100))
+
+    @staticmethod
+    def _get_text_watermark_margin(font_px: int) -> int:
+        return int(font_px * 0.75)
+
+    @staticmethod
+    def _get_image_watermark_max_side(width: int, height: int, relative_size: int) -> int:
+        return max(24, round(min(width, height) * relative_size * 1.2 / 100))
+
+    @staticmethod
+    def _get_image_watermark_margin(width: int, height: int) -> int:
+        return max(12, round(min(width, height) * 0.02))
+
+    @staticmethod
+    def _measure_text_bbox(text: str, font: ImageFont.FreeTypeFont) -> Tuple[int, int]:
+        tmp_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1), (0, 0, 0, 0)))
+        bbox = tmp_draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    @staticmethod
+    def _get_tile_spacing(stamp_w: int, stamp_h: int, tile_density: int) -> Tuple[int, int]:
+        spacing_mult = 4.0 - (tile_density - 1) * (2.9 / 9)
+        return (
+            max(stamp_w + 1, int(stamp_w * spacing_mult)),
+            max(stamp_h + 1, int(stamp_h * spacing_mult)),
+        )
+
+    @classmethod
+    def _paste_tiled_stamp(cls, overlay: Image.Image, stamp: Image.Image,
+                           img_w: int, img_h: int, tile_density: int) -> None:
+        spacing_x, spacing_y = cls._get_tile_spacing(stamp.width, stamp.height, tile_density)
+
+        for row, y in enumerate(range(-stamp.height, img_h + stamp.height, spacing_y)):
+            x_offset = (spacing_x // 2) * (row % 2)
+            for x in range(-stamp.width + x_offset, img_w + stamp.width, spacing_x):
+                overlay.paste(stamp, (x, y), stamp)
+
+    def _apply_text_watermark(self, img: Image.Image, text: str, position: str = 'bottom-right',
+                              opacity: int = 50, color: str = 'white',
+                              relative_size: int = 5,
+                              tile_density: int = 5,
+                              angle: int = 0) -> Tuple[Image.Image, bool]:
         """Apply text watermark onto the image using an RGBA overlay.
         Returns (image, was_applied) tuple.
         angle: rotation in degrees, positive = clockwise visual rotation."""
@@ -79,7 +119,7 @@ class ImageCompressor:
             return img, False
 
         # Calculate font size relative to shorter dimension
-        font_px = max(12, int(min(w, h) * relative_size * 0.5 / 100))
+        font_px = self._get_text_watermark_font_px(w, h, relative_size)
         font = self._get_font(font_px)
 
         # Resolve color
@@ -109,9 +149,8 @@ class ImageCompressor:
         else:
             draw = ImageDraw.Draw(overlay)
             # Single watermark
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            margin = int(font_px * 0.75)
+            tw, th = self._measure_text_bbox(text, font)
+            margin = self._get_text_watermark_margin(font_px)
 
             if angle == 0:
                 # No rotation — draw directly (preserves exact current rendering)
@@ -162,7 +201,7 @@ class ImageCompressor:
                    min(w, cx + region_size), min(h, cy + region_size))
         else:
             # Sample the corner where watermark will be placed
-            margin = int(font_px * 0.75)
+            margin = self._get_text_watermark_margin(font_px)
             # Use a rough text size estimate
             sample_w = min(w // 3, len(text) * font_px)
             sample_h = font_px * 2
@@ -186,7 +225,7 @@ class ImageCompressor:
         region = rgb_img.crop(box)
         # Average luminance (simple grayscale average)
         gray = region.convert('L')
-        avg_luminance = sum(gray.getdata()) / max(1, gray.size[0] * gray.size[1])
+        avg_luminance = self._average_luminance(gray)
 
         return (255, 255, 255) if avg_luminance < 128 else (0, 0, 0)
 
@@ -213,9 +252,7 @@ class ImageCompressor:
                               angle: int = 0):
         """Draw repeating watermark text across the entire image.
         angle: rotation in degrees, positive = clockwise visual rotation."""
-        draw = ImageDraw.Draw(overlay)
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        tw, th = ImageCompressor._measure_text_bbox(text, font)
 
         # Negate angle for PIL's CCW convention (positive = clockwise visual)
         pil_angle = -angle
@@ -236,18 +273,122 @@ class ImageCompressor:
 
         # Rotate stamp
         rotated = stamp.rotate(pil_angle, expand=True, resample=Image.Resampling.BICUBIC)
-        rw, rh = rotated.size
+        ImageCompressor._paste_tiled_stamp(overlay, rotated, img_w, img_h, tile_density)
 
-        # Tile spacing: density 1 → 4x (sparse), density 10 → 1.1x (dense)
-        spacing_mult = 4.0 - (tile_density - 1) * (2.9 / 9)
-        spacing_x = max(rw + 1, int(rw * spacing_mult))
-        spacing_y = max(rh + 1, int(rh * spacing_mult))
+    @staticmethod
+    def _scaled_watermark_size(img: Image.Image, max_side: int) -> Tuple[int, int]:
+        width, height = img.size
+        longest_side = max(width, height) or 1
+        scale = min(1.0, max_side / longest_side)
+        return max(1, round(width * scale)), max(1, round(height * scale))
 
-        # Tile across the image with offset rows
-        for row, y in enumerate(range(-rh, img_h + rh, spacing_y)):
-            x_offset = (spacing_x // 2) * (row % 2)  # Stagger alternating rows
-            for x in range(-rw + x_offset, img_w + rw, spacing_x):
-                overlay.paste(rotated, (x, y), rotated)
+    def _create_image_watermark_stamp(self, img: Image.Image, max_side: int, opacity: int) -> Image.Image:
+        rgba = img.convert('RGBA')
+        width, height = self._scaled_watermark_size(rgba, max_side)
+        if rgba.size != (width, height):
+            rgba = rgba.resize((width, height), Image.Resampling.LANCZOS)
+
+        if opacity < 100:
+            alpha = rgba.getchannel('A').point(lambda value: int(value * opacity / 100))
+            rgba.putalpha(alpha)
+
+        return rgba
+
+    def _apply_image_watermark(self, img: Image.Image,
+                               stamp_source: Image.Image,
+                               position: str = 'bottom-right',
+                               opacity: int = 50,
+                               relative_size: int = 5,
+                               tile_density: int = 5,
+                               angle: int = 0) -> Tuple[Image.Image, bool]:
+        w, h = img.size
+
+        if min(w, h) < 50:
+            logger.info("Image too small for watermark (%dx%d), skipping", w, h)
+            return img, False
+
+        max_side = self._get_image_watermark_max_side(w, h, relative_size)
+        stamp = self._create_image_watermark_stamp(stamp_source, max_side, opacity)
+        rotated = stamp.rotate(-angle, expand=True, resample=Image.Resampling.BICUBIC) if angle else stamp
+
+        original_mode = img.mode
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+
+        overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+
+        if position == 'tiled':
+            self._paste_tiled_stamp(overlay, rotated, w, h, tile_density)
+        else:
+            margin = self._get_image_watermark_margin(w, h)
+            x, y = self._calc_watermark_position(position, w, h, rotated.width, rotated.height, margin)
+            overlay.paste(rotated, (x, y), rotated)
+
+        img = Image.alpha_composite(img, overlay)
+
+        if original_mode != 'RGBA':
+            img = img.convert(original_mode)
+
+        return img, True
+
+    def _apply_watermark_layers(self, img: Image.Image,
+                                watermark_layers: Optional[Dict[str, Dict]]) -> Tuple[Image.Image, bool, List[str]]:
+        if not watermark_layers:
+            return img, False, []
+
+        applied_layers: List[str] = []
+
+        text_layer = watermark_layers.get('text')
+        if text_layer and text_layer.get('value'):
+            img, applied = self._apply_text_watermark(
+                img,
+                text_layer['value'],
+                text_layer.get('position', 'bottom-right'),
+                text_layer.get('opacity', 50),
+                text_layer.get('color', 'white'),
+                text_layer.get('size', 5),
+                text_layer.get('tile_density', 5),
+                text_layer.get('angle', 0),
+            )
+            if applied:
+                applied_layers.append('text')
+
+        logo_layer = watermark_layers.get('logo')
+        if logo_layer and logo_layer.get('image') is not None:
+            img, applied = self._apply_image_watermark(
+                img,
+                logo_layer['image'],
+                logo_layer.get('position', 'bottom-right'),
+                logo_layer.get('opacity', 50),
+                logo_layer.get('size', 5),
+                logo_layer.get('tile_density', 5),
+                logo_layer.get('angle', 0),
+            )
+            if applied:
+                applied_layers.append('logo')
+
+        qr_layer = watermark_layers.get('qr')
+        if qr_layer and qr_layer.get('image') is not None and qr_layer.get('url'):
+            img, applied = self._apply_image_watermark(
+                img,
+                qr_layer['image'],
+                qr_layer.get('position', 'bottom-right'),
+                qr_layer.get('opacity', 50),
+                qr_layer.get('size', 5),
+                qr_layer.get('tile_density', 5),
+                qr_layer.get('angle', 0),
+            )
+            if applied:
+                applied_layers.append('qr')
+
+        return img, bool(applied_layers), applied_layers
+
+    @staticmethod
+    def _average_luminance(gray_image: Image.Image) -> float:
+        histogram = gray_image.histogram()
+        total_pixels = max(1, sum(histogram))
+        total_luminance = sum(value * count for value, count in enumerate(histogram))
+        return total_luminance / total_pixels
 
     def _apply_exif_orientation(self, img: Image.Image) -> Image.Image:
         """Physically rotate pixels to match EXIF orientation tag."""
@@ -629,13 +770,7 @@ class ImageCompressor:
         quality: Optional[int] = None,
         output_format: str = 'auto',
         preloaded_image: Optional[Image.Image] = None,
-        watermark_text: Optional[str] = None,
-        watermark_position: str = 'bottom-right',
-        watermark_opacity: int = 50,
-        watermark_color: str = 'white',
-        watermark_size: int = 5,
-        watermark_tile_density: int = 5,
-        watermark_angle: int = 0,
+        watermark_layers: Optional[Dict[str, Dict]] = None,
         remove_background: bool = False,
     ) -> Tuple[bytes, Dict]:
         """
@@ -709,11 +844,12 @@ class ImageCompressor:
 
         # Apply watermark after resize, before compression
         watermark_applied = False
-        if watermark_text:
-            img, watermark_applied = self._apply_watermark(
-                img, watermark_text, watermark_position,
-                watermark_opacity, watermark_color, watermark_size,
-                watermark_tile_density, watermark_angle)
+        applied_watermark_layers: List[str] = []
+        if watermark_layers:
+            img, watermark_applied, applied_watermark_layers = self._apply_watermark_layers(
+                img,
+                watermark_layers,
+            )
 
         # Apply compression based on mode
         # For explicit format targets, bypass mode dispatch with format-specific methods
@@ -769,6 +905,7 @@ class ImageCompressor:
             'format_warnings': format_warnings,
             'background_removed': background_removed,
             'watermarked': watermark_applied,
+            'watermark_layers': applied_watermark_layers,
         }
 
         return compressed_data, metadata

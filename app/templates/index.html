@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_watermark_macros.html" import watermark_panel %}
 
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/upload.css') }}">
@@ -202,88 +203,80 @@
                 </div>
 
                 <div class="watermark-body is-hidden" id="watermark-body">
-                    <input type="text" class="watermark-text__input" id="watermark-text"
-                           placeholder="&copy; Your Name" maxlength="50"
-                           aria-label="Watermark text">
-
-                    <div class="watermark-options">
-                        <div class="watermark-options__group watermark-options__group--full">
-                            <span class="watermark-options__label">Position</span>
-                            <div class="segmented-control segmented-control--sm segmented-control--wrap" role="radiogroup" aria-label="Watermark position" id="watermark-position-control">
-                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="top-left" title="Top Left">TL</button>
-                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="top-right" title="Top Right">TR</button>
-                                <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="bottom-right" title="Bottom Right">BR</button>
-                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="bottom-left" title="Bottom Left">BL</button>
-                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="center" title="Center">Center</button>
-                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="tiled" title="Tiled">Tiled</button>
+                    <div class="watermark-preview-card">
+                        <div class="watermark-preview-card__header">
+                            <div>
+                                <span class="watermark-options__label">Live Preview</span>
+                                <p class="sidebar__hint watermark-preview-card__hint">
+                                    Preview source:
+                                    <span id="watermark-preview-source-name">No image selected</span>
+                                </p>
+                            </div>
+                            <span class="watermark-preview-card__badge">Client-side</span>
+                        </div>
+                        <div class="watermark-preview-card__canvas-wrap">
+                            <canvas id="watermark-preview-canvas" width="640" height="400" aria-hidden="true"></canvas>
+                            <div class="watermark-preview-card__state" id="watermark-preview-state" data-state="empty" role="status" aria-live="polite">
+                                Upload an image to preview watermark placement.
                             </div>
                         </div>
+                        <p class="sidebar__hint sidebar__hint--below">
+                            Preview shows watermark placement only; it does not simulate compression artifacts or background removal.
+                        </p>
+                    </div>
 
+                    <div class="watermark-editor">
+                        <div class="watermark-tabs" id="watermark-tabs" role="tablist" aria-label="Watermark layers">
+                            <button type="button" class="watermark-tab is-active" id="watermark-tab-text" role="tab"
+                                    aria-selected="true" aria-controls="watermark-panel-text" tabindex="0"
+                                    data-layer="text">
+                                <span class="watermark-tab__label">Text</span>
+                                <span class="watermark-tab__status" id="watermark-tab-text-status" data-tone="off">Off</span>
+                            </button>
+                            <button type="button" class="watermark-tab" id="watermark-tab-logo" role="tab"
+                                    aria-selected="false" aria-controls="watermark-panel-logo" tabindex="-1"
+                                    data-layer="logo">
+                                <span class="watermark-tab__label">Logo</span>
+                                <span class="watermark-tab__status" id="watermark-tab-logo-status" data-tone="off">Off</span>
+                            </button>
+                            <button type="button" class="watermark-tab" id="watermark-tab-qr" role="tab"
+                                    aria-selected="false" aria-controls="watermark-panel-qr" tabindex="-1"
+                                    data-layer="qr">
+                                <span class="watermark-tab__label">QR</span>
+                                <span class="watermark-tab__status" id="watermark-tab-qr-status" data-tone="off">Off</span>
+                            </button>
+                        </div>
+
+                        {% call watermark_panel('text', 'Text', 'Text Layer', 'Optional text mark with independent placement and contrast.', 'Enable text watermark layer', 'watermark-text-message', active=True) %}
+                        <input type="text" class="watermark-text__input" id="watermark-text"
+                               placeholder="&copy; Your Name" maxlength="50"
+                               aria-label="Watermark text">
                         <div class="watermark-options__group watermark-options__group--full">
-                            <span class="watermark-options__label">Color</span>
-                            <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Watermark color" id="watermark-color-control">
+                            <span class="watermark-options__label">Text Color</span>
+                            <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Watermark text color" id="watermark-text-color-control">
                                 <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="white">White</button>
                                 <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="black">Black</button>
                                 <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="auto">Auto</button>
                             </div>
                         </div>
+                        {% endcall %}
 
-                        <div class="watermark-options__group watermark-options__group--full">
-                            <div class="quality-slider">
-                                <div class="quality-slider__header">
-                                    <label class="quality-slider__label" for="watermark-opacity-slider">Opacity</label>
-                                    <output class="quality-slider__value" id="watermark-opacity-value" for="watermark-opacity-slider">50%</output>
-                                </div>
-                                <input type="range" class="quality-slider__input" id="watermark-opacity-slider" min="10" max="100" step="5" value="50">
-                                <div class="quality-slider__range-labels">
-                                    <span>Subtle</span>
-                                    <span>Opaque</span>
-                                </div>
-                            </div>
+                        {% call watermark_panel('logo', 'Logo', 'Logo Layer', 'Upload a PNG logo and tune its own transform.', 'Enable logo watermark layer', 'watermark-logo-message') %}
+                        <input type="file" id="watermark-logo-file" class="watermark-file__input" accept="image/png" aria-label="Upload watermark logo PNG">
+                        <div class="watermark-file__meta">
+                            <span class="watermark-file__chip is-hidden" id="watermark-logo-filename"></span>
+                            <button type="button" class="btn btn--ghost btn--sm is-hidden" id="watermark-logo-clear">Remove</button>
                         </div>
+                        {% endcall %}
 
-                        <div class="watermark-options__group watermark-options__group--full">
-                            <div class="quality-slider">
-                                <div class="quality-slider__header">
-                                    <label class="quality-slider__label" for="watermark-size-slider">Size</label>
-                                    <output class="quality-slider__value" id="watermark-size-value" for="watermark-size-slider">5</output>
-                                </div>
-                                <input type="range" class="quality-slider__input" id="watermark-size-slider" min="1" max="20" value="5">
-                                <div class="quality-slider__range-labels">
-                                    <span>Subtle</span>
-                                    <span>Bold</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="watermark-options__group watermark-options__group--full is-hidden" id="watermark-density-group">
-                            <div class="quality-slider">
-                                <div class="quality-slider__header">
-                                    <label class="quality-slider__label" for="watermark-density-slider">Tile Density</label>
-                                    <output class="quality-slider__value" id="watermark-density-value" for="watermark-density-slider">5</output>
-                                </div>
-                                <input type="range" class="quality-slider__input" id="watermark-density-slider" min="1" max="10" value="5">
-                                <div class="quality-slider__range-labels">
-                                    <span>Sparse</span>
-                                    <span>Dense</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="watermark-options__group watermark-options__group--full">
-                            <div class="quality-slider">
-                                <div class="quality-slider__header">
-                                    <label class="quality-slider__label" for="watermark-angle-slider">Angle</label>
-                                    <output class="quality-slider__value" id="watermark-angle-value" for="watermark-angle-slider">0&deg;</output>
-                                </div>
-                                <input type="range" class="quality-slider__input" id="watermark-angle-slider" min="-180" max="180" step="5" value="0">
-                                <div class="quality-slider__range-labels">
-                                    <span>-180&deg;</span>
-                                    <span>0&deg;</span>
-                                    <span>180&deg;</span>
-                                </div>
-                            </div>
-                        </div>
+                        {% call watermark_panel('qr', 'QR', 'QR Layer', 'Generate and place a QR stamp independently.', 'Enable QR watermark layer', 'watermark-qr-error') %}
+                        <input type="url" class="watermark-text__input" id="watermark-qr-url"
+                               placeholder="https://example.com" maxlength="2048"
+                               aria-label="QR watermark URL">
+                        <p class="sidebar__hint watermark-layer__hint" id="watermark-qr-help">
+                            Use an absolute <code>http://</code> or <code>https://</code> URL.
+                        </p>
+                        {% endcall %}
                     </div>
                 </div>
             </div>

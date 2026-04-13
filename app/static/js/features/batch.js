@@ -9,6 +9,7 @@ import { processTile } from './image-tile.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 import { showConfirm } from '../components/confirm.js';
+import { getCurrentProcessingSnapshot } from './settings.js';
 
 const CHUNK_SIZE = 5;
 const RETRYABLE_STATUSES = new Set(['pending', 'error', 'cancelled']);
@@ -474,7 +475,7 @@ function updateReprocessVisibility() {
   const btn = $('#reprocess-all');
   if (!btn) return;
 
-  const currentSettings = JSON.stringify(state.settings);
+  const currentSettings = JSON.stringify(getCurrentProcessingSnapshot());
   const needsReprocess = [...state.files.values()].some((entry) => {
     if (entry.status !== 'done' || !entry.processedWithSettings) return false;
     return JSON.stringify(entry.processedWithSettings) !== currentSettings;
@@ -503,7 +504,7 @@ async function retryIncomplete() {
 async function reprocessAll() {
   if (processing) return;
 
-  const currentSettings = JSON.stringify(state.settings);
+  const currentSettings = JSON.stringify(getCurrentProcessingSnapshot());
   const doneIds = [...state.files.entries()]
     .filter(([, entry]) => {
       if (entry.status !== 'done' || !entry.processedWithSettings) return false;

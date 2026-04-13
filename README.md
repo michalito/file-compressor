@@ -11,6 +11,10 @@ Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**, **HEIC/HEIF**
 - **Quality slider** (1–100) for fine-grained control in Balanced and Maximum modes
 - **Resize** with preset dimensions (Full HD, HD, Web) or custom width/height
 - **Background removal** with rembg subject isolation and transparent PNG output
+- **Watermark layers** with text, uploaded logo PNGs, and QR codes generated from URLs
+- **Live watermark preview** in the sidebar with per-image preview source selection
+- **Multiple watermark stacking** for text + logo + QR in a single pass
+- **Per-layer transform controls** so text, logo, and QR can each use their own position, opacity, size, angle, and tile density
 - **Automatic processing** on upload — no manual "Process" button needed
 - **Batch processing** with 5 concurrent uploads, progress tracking, time estimates, and cancel support
 - **Re-process** when settings change, **retry** for failed files
@@ -177,6 +181,17 @@ The inline settings panel offers these controls:
 
 **Background**: Remove Background runs rembg subject isolation and forces transparent PNG output. Compression mode and output format controls are locked while it is enabled, but resize and watermark remain available.
 
+**Watermark**:
+- Master toggle keeps watermark values but disables watermark preview/rendering when turned off
+- **Text layer** supports white, black, or auto-contrast text
+- **Logo layer** accepts PNG files only, up to 5 MB and 4096×4096
+- **QR layer** generates a QR watermark from an absolute `http://` or `https://` URL up to 2048 characters
+- Each layer has its own tab with independent position, opacity, size, angle, and tile density controls
+- **Tiled** position is available for text, logo, and QR layers
+- **Live preview** uses a client-side canvas and the selected image tile as its preview source
+- Uploaded logo files and generated QR PNGs are session-only and are not restored after a page reload
+- Browser preview may be unavailable for source formats the browser cannot decode locally (for example some TIFF/HEIC files); server-side processing still works
+
 Settings persist in your browser across sessions via localStorage.
 
 ### 4. Automatic Processing
@@ -211,6 +226,7 @@ Additional behaviors:
 - **Maximum mode retry**: if compression ratio exceeds 50%, retries at quality 30 for more aggressive compression
 - **Transparency**: JPEG composites transparent areas onto a white background; WebP and PNG preserve alpha channels
 - **Background removal**: runs before watermarking and always outputs a transparent PNG
+- **Watermark order**: resize/background removal happen before watermark compositing, and watermarking happens before final compression
 - **CMYK/Palette images**: automatically converted to RGB before processing
 - **EXIF orientation**: physically applied (rotated) before processing in all modes
 - **Progressive JPEG**: enabled in all modes for faster web rendering

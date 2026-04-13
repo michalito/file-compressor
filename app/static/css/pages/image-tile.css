@@ -20,6 +20,28 @@
   box-shadow: inset 3px 0 0 var(--color-success);
 }
 
+.tile--preview-selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary-subtle);
+}
+
+.tile--preview-selected .tile__preview::before {
+  content: 'Preview Source';
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 1;
+  padding: 0 var(--space-2);
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  background-color: rgba(15, 23, 42, 0.78);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
 /* Tile header */
 .tile__header {
   display: flex;
@@ -77,6 +99,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
 }
 
 .tile__image {

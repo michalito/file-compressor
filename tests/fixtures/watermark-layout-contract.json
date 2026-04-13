@@ -1,0 +1,137 @@
+{
+  "textFontCases": [
+    {
+      "name": "small-image-minimum-font",
+      "width": 320,
+      "height": 240,
+      "size": 5,
+      "fontPx": 12,
+      "margin": 9
+    },
+    {
+      "name": "medium-image-rounded-font",
+      "width": 1280,
+      "height": 720,
+      "size": 9,
+      "fontPx": 32,
+      "margin": 24
+    },
+    {
+      "name": "large-image-scale-up",
+      "width": 6000,
+      "height": 4000,
+      "size": 12,
+      "fontPx": 240,
+      "margin": 180
+    }
+  ],
+  "imageCases": [
+    {
+      "name": "small-image-minimum-stamp",
+      "width": 320,
+      "height": 240,
+      "size": 5,
+      "maxSide": 24,
+      "margin": 12
+    },
+    {
+      "name": "medium-image-rounded-stamp",
+      "width": 1280,
+      "height": 720,
+      "size": 10,
+      "maxSide": 86,
+      "margin": 14
+    },
+    {
+      "name": "large-image-scale-up",
+      "width": 6000,
+      "height": 4000,
+      "size": 15,
+      "maxSide": 720,
+      "margin": 80
+    }
+  ],
+  "tileCases": [
+    {
+      "name": "sparse-tiling",
+      "stampWidth": 120,
+      "stampHeight": 60,
+      "tileDensity": 1,
+      "spacingX": 480,
+      "spacingY": 240
+    },
+    {
+      "name": "balanced-tiling",
+      "stampWidth": 120,
+      "stampHeight": 60,
+      "tileDensity": 5,
+      "spacingX": 325,
+      "spacingY": 162
+    },
+    {
+      "name": "dense-tiling",
+      "stampWidth": 120,
+      "stampHeight": 60,
+      "tileDensity": 10,
+      "spacingX": 132,
+      "spacingY": 66
+    }
+  ],
+  "positionCases": [
+    {
+      "name": "top-left-anchor",
+      "position": "top-left",
+      "imgW": 320,
+      "imgH": 240,
+      "stampW": 60,
+      "stampH": 40,
+      "margin": 12,
+      "x": 12,
+      "y": 12
+    },
+    {
+      "name": "top-right-anchor",
+      "position": "top-right",
+      "imgW": 320,
+      "imgH": 240,
+      "stampW": 60,
+      "stampH": 40,
+      "margin": 12,
+      "x": 248,
+      "y": 12
+    },
+    {
+      "name": "bottom-left-anchor",
+      "position": "bottom-left",
+      "imgW": 320,
+      "imgH": 240,
+      "stampW": 60,
+      "stampH": 40,
+      "margin": 12,
+      "x": 12,
+      "y": 188
+    },
+    {
+      "name": "bottom-right-anchor",
+      "position": "bottom-right",
+      "imgW": 320,
+      "imgH": 240,
+      "stampW": 60,
+      "stampH": 40,
+      "margin": 12,
+      "x": 248,
+      "y": 188
+    },
+    {
+      "name": "center-anchor",
+      "position": "center",
+      "imgW": 320,
+      "imgH": 240,
+      "stampW": 60,
+      "stampH": 40,
+      "margin": 12,
+      "x": 130,
+      "y": 100
+    }
+  ]
+}

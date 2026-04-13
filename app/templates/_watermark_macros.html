@@ -1,0 +1,87 @@
+{% macro watermark_position_control(layer_key, layer_label, active_position='bottom-right') -%}
+<div class="watermark-options__group watermark-options__group--full">
+    <span class="watermark-options__label">Position</span>
+    <div class="segmented-control segmented-control--sm segmented-control--wrap"
+         role="radiogroup"
+         aria-label="{{ layer_label }} watermark position"
+         id="watermark-{{ layer_key }}-position-control">
+        {% for value, short_label, title in [
+            ('top-left', 'TL', 'Top Left'),
+            ('top-right', 'TR', 'Top Right'),
+            ('bottom-right', 'BR', 'Bottom Right'),
+            ('bottom-left', 'BL', 'Bottom Left'),
+            ('center', 'Center', 'Center'),
+            ('tiled', 'Tiled', 'Tiled'),
+        ] %}
+        <button type="button"
+                class="segmented-control__item{% if value == active_position %} is-active{% endif %}"
+                role="radio"
+                aria-checked="{{ 'true' if value == active_position else 'false' }}"
+                data-value="{{ value }}"
+                title="{{ title }}"
+                {% if value == 'tiled' %}id="watermark-{{ layer_key }}-position-tiled"{% endif %}>
+            {{ short_label }}
+        </button>
+        {% endfor %}
+    </div>
+</div>
+{%- endmacro %}
+
+{% macro watermark_slider(layer_key, field_key, label, value, min_value, max_value, start_label, end_label, step=None, hidden=False, middle_label=None) -%}
+<div class="watermark-options__group watermark-options__group--full{% if hidden %} is-hidden{% endif %}"
+     {% if hidden %}id="watermark-{{ layer_key }}-{{ field_key }}-group"{% endif %}>
+    <div class="quality-slider">
+        <div class="quality-slider__header">
+            <label class="quality-slider__label" for="watermark-{{ layer_key }}-{{ field_key }}-slider">{{ label }}</label>
+            <output class="quality-slider__value"
+                    id="watermark-{{ layer_key }}-{{ field_key }}-value"
+                    for="watermark-{{ layer_key }}-{{ field_key }}-slider">{{ value|safe }}</output>
+        </div>
+        <input type="range"
+               class="quality-slider__input"
+               id="watermark-{{ layer_key }}-{{ field_key }}-slider"
+               min="{{ min_value }}"
+               max="{{ max_value }}"
+               {% if step is not none %}step="{{ step }}"{% endif %}
+               value="{{ value|replace('%', '')|replace('&deg;', '') }}">
+        <div class="quality-slider__range-labels">
+            <span>{{ start_label|safe }}</span>
+            {% if middle_label is not none %}<span>{{ middle_label|safe }}</span>{% endif %}
+            <span>{{ end_label|safe }}</span>
+        </div>
+    </div>
+</div>
+{%- endmacro %}
+
+{% macro watermark_panel(layer_key, layer_label, title, hint, toggle_label, error_id, active=False) -%}
+<section class="watermark-panel{% if active %} is-active{% endif %}"
+         id="watermark-panel-{{ layer_key }}"
+         role="tabpanel"
+         aria-labelledby="watermark-tab-{{ layer_key }}"
+         tabindex="0"
+         {% if not active %}hidden{% endif %}
+         data-layer="{{ layer_key }}">
+    <div class="watermark-layer">
+        <div class="watermark-layer__header">
+            <div>
+                <h3 class="watermark-layer__title">{{ title }}</h3>
+                <p class="sidebar__hint watermark-layer__hint">{{ hint }}</p>
+            </div>
+            <label class="sidebar__toggle" for="watermark-{{ layer_key }}-toggle">
+                <input type="checkbox" id="watermark-{{ layer_key }}-toggle" class="sidebar__toggle-input sr-only">
+                <span class="sidebar__toggle-switch" aria-hidden="true"></span>
+                <span class="sr-only">{{ toggle_label }}</span>
+            </label>
+        </div>
+
+        {{ caller() }}
+        {{ watermark_position_control(layer_key, layer_label) }}
+        {{ watermark_slider(layer_key, 'opacity', 'Opacity', '50%', 10, 100, 'Subtle', 'Opaque', step=5) }}
+        {{ watermark_slider(layer_key, 'size', 'Size', '5', 1, 20, 'Subtle', 'Bold') }}
+        {{ watermark_slider(layer_key, 'density', 'Tile Density', '5', 1, 10, 'Sparse', 'Dense', hidden=True) }}
+        {{ watermark_slider(layer_key, 'angle', 'Angle', '0&deg;', -180, 180, '-180&deg;', '180&deg;', step=5, middle_label='0&deg;') }}
+
+        <p class="sidebar__hint sidebar__hint--warning watermark-layer__error is-hidden" id="{{ error_id }}"></p>
+    </div>
+</section>
+{%- endmacro %}

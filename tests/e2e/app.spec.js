@@ -4,6 +4,8 @@ const { test, expect } = require('@playwright/test');
 
 const fixturePath = path.join(__dirname, 'fixtures', 'test-image.png');
 const fixtureBuffer = fs.readFileSync(fixturePath);
+const tiffFixturePath = path.join(__dirname, 'fixtures', 'test-image.tiff');
+const tiffFixtureBuffer = fs.readFileSync(tiffFixturePath);
 
 function makeFiles(count, prefix) {
   return Array.from({ length: count }, (_, index) => ({
@@ -27,6 +29,61 @@ async function uploadFiles(page, files) {
 
 async function waitForDoneCount(page, count) {
   await expect(page.locator('.tile.is-done')).toHaveCount(count, { timeout: 30_000 });
+}
+
+function makePngUpload(name, { buffer = fixtureBuffer, lastModified = Date.now() } = {}) {
+  return {
+    name,
+    mimeType: 'image/png',
+    buffer,
+    lastModified,
+  };
+}
+
+async function enableWatermark(page) {
+  await page.locator('label[for="watermark-toggle"]').click();
+}
+
+async function openWatermarkTab(page, layer) {
+  await page.locator(`#watermark-tab-${layer}`).click();
+}
+
+async function setRangeValue(page, selector, value) {
+  await page.locator(selector).evaluate((input, nextValue) => {
+    input.value = String(nextValue);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+}
+
+function mockProcessResponse({
+  filename = 'processed.png',
+  format = 'PNG',
+  watermarked = false,
+  watermarkLayers = [],
+  backgroundRemoved = false,
+} = {}) {
+  return {
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      compressed_data: fixtureBuffer.toString('base64'),
+      filename,
+      warnings: [],
+      metadata: {
+        original_size: fixtureBuffer.length,
+        compressed_size: fixtureBuffer.length,
+        original_dimensions: [300, 300],
+        final_dimensions: [300, 300],
+        compression_ratio: 100,
+        format,
+        original_format: 'PNG',
+        background_removed: backgroundRemoved,
+        watermarked,
+        watermark_layers: watermarkLayers,
+        encoding: 'base64',
+      },
+    }),
+  };
 }
 
 test('redirects to login on session expiry during API actions', async ({ page, context }) => {
@@ -172,6 +229,372 @@ test('background removal locks compression controls and sends the flag', async (
 
   await expect(page.locator('.tile__final-format')).toHaveText('PNG');
   await expect(page.locator('.tile__status-badges')).toContainText('BG removed');
+});
+
+test('logo watermark preview renders and request includes the uploaded logo', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill(mockProcessResponse({
+      filename: 'watermarked.png',
+      watermarked: true,
+      watermarkLayers: ['logo'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await openWatermarkTab(page, 'logo');
+  await page.locator('#watermark-logo-file').setInputFiles(makePngUpload('brand.png'));
+  await page.locator('#watermark-logo-position-control [data-value="tiled"]').click();
+  await setRangeValue(page, '#watermark-logo-density-slider', 8);
+
+  await expect(page.locator('#watermark-tab-logo-status')).toHaveText('Ready');
+
+  await uploadFiles(page, makeFiles(1, 'logo-preview'));
+  await waitForDoneCount(page, 1);
+
+  expect(capturedRequests).toHaveLength(1);
+  expect(capturedRequests[0]).toContain('name="watermark_logo"');
+  expect(capturedRequests[0]).toContain('filename="brand.png"');
+  expect(capturedRequests[0]).toContain('name="watermark_logo_position"');
+  expect(capturedRequests[0]).toContain('\r\n\r\ntiled\r\n');
+  expect(capturedRequests[0]).toContain('name="watermark_logo_tile_density"');
+  expect(capturedRequests[0]).toContain('\r\n\r\n8\r\n');
+
+  await expect(page.locator('#watermark-preview-source-name')).toHaveText('logo-preview-1.png');
+  await expect(page.locator('#watermark-preview-state')).toHaveClass(/is-hidden/);
+});
+
+test('tab status chips update and controls persist when switching tabs', async ({ page }) => {
+  await login(page);
+  await enableWatermark(page);
+
+  await page.locator('#watermark-text').fill('Status');
+  await expect(page.locator('#watermark-tab-text-status')).toHaveText('Ready');
+
+  await openWatermarkTab(page, 'logo');
+  await page.locator('#watermark-logo-file').setInputFiles(makePngUpload('status-logo.png'));
+  await expect(page.locator('#watermark-tab-logo-status')).toHaveText('Ready');
+
+  await openWatermarkTab(page, 'qr');
+  await page.locator('#watermark-qr-url').fill('not-a-url');
+  await expect(page.locator('#watermark-tab-qr-status')).toHaveText('Invalid');
+  await expect(page.locator('#watermark-qr-error')).toContainText('Use an absolute http:// or https:// URL.');
+
+  await openWatermarkTab(page, 'text');
+  await expect(page.locator('#watermark-text')).toHaveValue('Status');
+
+  await openWatermarkTab(page, 'logo');
+  await expect(page.locator('#watermark-logo-filename')).toHaveText('status-logo.png');
+});
+
+test('multiple watermark layers send independent text and logo transforms', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill(mockProcessResponse({
+      filename: 'stacked.png',
+      watermarked: true,
+      watermarkLayers: ['text', 'logo'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await page.locator('#watermark-text').fill('Stacked');
+  await page.locator('#watermark-text-position-control [data-value="bottom-left"]').click();
+  await setRangeValue(page, '#watermark-text-angle-slider', 15);
+
+  await openWatermarkTab(page, 'logo');
+  await page.locator('#watermark-logo-file').setInputFiles(makePngUpload('stacked-logo.png'));
+  await page.locator('#watermark-logo-position-control [data-value="top-right"]').click();
+  await setRangeValue(page, '#watermark-logo-opacity-slider', 80);
+
+  await uploadFiles(page, makeFiles(1, 'stacked'));
+  await waitForDoneCount(page, 1);
+
+  expect(capturedRequests).toHaveLength(1);
+  expect(capturedRequests[0]).toContain('name="watermark_text"');
+  expect(capturedRequests[0]).toContain('Stacked');
+  expect(capturedRequests[0]).toContain('name="watermark_text_position"');
+  expect(capturedRequests[0]).toContain('\r\n\r\nbottom-left\r\n');
+  expect(capturedRequests[0]).toContain('name="watermark_text_angle"');
+  expect(capturedRequests[0]).toContain('\r\n\r\n15\r\n');
+  expect(capturedRequests[0]).toContain('name="watermark_logo"');
+  expect(capturedRequests[0]).toContain('filename="stacked-logo.png"');
+  expect(capturedRequests[0]).toContain('name="watermark_logo_position"');
+  expect(capturedRequests[0]).toContain('\r\n\r\ntop-right\r\n');
+  expect(capturedRequests[0]).toContain('name="watermark_logo_opacity"');
+  expect(capturedRequests[0]).toContain('\r\n\r\n80\r\n');
+});
+
+test('qr watermark validates URLs and sends generated png data with per-layer transforms', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill(mockProcessResponse({
+      filename: 'qr.png',
+      watermarked: true,
+      watermarkLayers: ['qr'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await openWatermarkTab(page, 'qr');
+
+  const qrInput = page.locator('#watermark-qr-url');
+  await qrInput.fill('not-a-url');
+  await expect(page.locator('#watermark-qr-error')).toContainText('Use an absolute http:// or https:// URL.');
+  await expect(page.locator('#watermark-tab-qr-status')).toHaveText('Invalid');
+
+  await qrInput.fill('https://example.com/watermark');
+  await expect(page.locator('#watermark-qr-error')).toHaveClass(/is-hidden/);
+  await expect(page.locator('#watermark-tab-qr-status')).toHaveText('Ready');
+
+  await page.locator('#watermark-qr-position-control [data-value="tiled"]').click();
+  await setRangeValue(page, '#watermark-qr-density-slider', 7);
+
+  await uploadFiles(page, makeFiles(1, 'qr'));
+  await waitForDoneCount(page, 1);
+
+  expect(capturedRequests).toHaveLength(1);
+  expect(capturedRequests[0]).toContain('name="watermark_qr_url"');
+  expect(capturedRequests[0]).toContain('https://example.com/watermark');
+  expect(capturedRequests[0]).toContain('name="watermark_qr_image"');
+  expect(capturedRequests[0]).toContain('filename="watermark-qr.png"');
+  expect(capturedRequests[0]).toContain('name="watermark_qr_position"');
+  expect(capturedRequests[0]).toContain('\r\n\r\ntiled\r\n');
+  expect(capturedRequests[0]).toContain('name="watermark_qr_tile_density"');
+  expect(capturedRequests[0]).toContain('\r\n\r\n7\r\n');
+});
+
+test('changing text layer controls updates the preview canvas without processing', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill(mockProcessResponse({
+      filename: 'preview.png',
+      watermarked: true,
+      watermarkLayers: ['text'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await page.locator('#watermark-text').fill('Preview');
+  await uploadFiles(page, makeFiles(1, 'preview'));
+  await waitForDoneCount(page, 1);
+
+  const before = await page.locator('#watermark-preview-canvas').evaluate((canvas) => canvas.toDataURL());
+  await setRangeValue(page, '#watermark-text-opacity-slider', 85);
+
+  await expect.poll(
+    () => page.locator('#watermark-preview-canvas').evaluate(
+      (canvas, previousDataUrl) => canvas.toDataURL() === previousDataUrl,
+      before,
+    ),
+  ).toBe(false);
+  expect(capturedRequests).toHaveLength(1);
+});
+
+test('pending watermark slider edits flush before processing starts', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill(mockProcessResponse({
+      filename: 'flush-watermark.png',
+      watermarked: true,
+      watermarkLayers: ['text'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await page.locator('#watermark-text').fill('Immediate');
+  await page.locator('#watermark-text-opacity-slider').evaluate((input) => {
+    input.value = '85';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
+  await uploadFiles(page, makeFiles(1, 'flush-watermark'));
+  await waitForDoneCount(page, 1);
+
+  expect(capturedRequests).toHaveLength(1);
+  expect(capturedRequests[0]).toContain('name="watermark_text_opacity"');
+  expect(capturedRequests[0]).toContain('\r\n\r\n85\r\n');
+});
+
+test('text-only transform changes do not add logo or qr request fields', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill(mockProcessResponse({
+      filename: 'text-only.png',
+      watermarked: true,
+      watermarkLayers: ['text'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await page.locator('#watermark-text').fill('Only Text');
+  await page.locator('#watermark-text-position-control [data-value="top-left"]').click();
+  await setRangeValue(page, '#watermark-text-size-slider', 9);
+
+  await uploadFiles(page, makeFiles(1, 'text-only'));
+  await waitForDoneCount(page, 1);
+
+  expect(capturedRequests).toHaveLength(1);
+  expect(capturedRequests[0]).toContain('name="watermark_text_position"');
+  expect(capturedRequests[0]).not.toContain('name="watermark_logo"');
+  expect(capturedRequests[0]).not.toContain('name="watermark_logo_position"');
+  expect(capturedRequests[0]).not.toContain('name="watermark_qr_url"');
+  expect(capturedRequests[0]).not.toContain('name="watermark_qr_position"');
+});
+
+test('changing the logo file after processing exposes re-process', async ({ page }) => {
+  await page.route('**/process', async (route) => {
+    await route.fulfill(mockProcessResponse({
+      filename: 'reprocess.png',
+      watermarked: true,
+      watermarkLayers: ['logo'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await openWatermarkTab(page, 'logo');
+  await page.locator('#watermark-logo-file').setInputFiles(makePngUpload('logo-a.png', { lastModified: 1 }));
+  await uploadFiles(page, makeFiles(1, 'reprocess'));
+  await waitForDoneCount(page, 1);
+
+  await expect(page.getByRole('button', { name: 'Re-process' })).toBeHidden();
+
+  await page.locator('#watermark-logo-file').setInputFiles(makePngUpload('logo-b.png', { lastModified: 2 }));
+  await expect(page.getByRole('button', { name: 'Re-process' })).toBeVisible();
+});
+
+test('preview keeps rendering valid layers when another enabled layer is invalid', async ({ page }) => {
+  const capturedRequests = [];
+
+  await page.route('**/process', async (route) => {
+    capturedRequests.push(route.request().postData() || '');
+    await route.fulfill(mockProcessResponse({
+      filename: 'mixed.png',
+      watermarked: true,
+      watermarkLayers: ['text'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await page.locator('#watermark-text').fill('Valid');
+  await openWatermarkTab(page, 'qr');
+  await page.locator('#watermark-qr-url').fill('not-a-url');
+  await uploadFiles(page, makeFiles(1, 'mixed'));
+  await waitForDoneCount(page, 1);
+
+  await expect(page.locator('#watermark-qr-error')).toContainText('Use an absolute http:// or https:// URL.');
+  await expect(page.locator('#watermark-preview-state')).toHaveClass(/is-hidden/);
+
+  expect(capturedRequests).toHaveLength(1);
+  expect(capturedRequests[0]).toContain('name="watermark_text"');
+  expect(capturedRequests[0]).not.toContain('name="watermark_qr_url"');
+  expect(capturedRequests[0]).not.toContain('name="watermark_qr_image"');
+});
+
+test('clicking a tile changes the watermark preview source', async ({ page }) => {
+  await page.route('**/process', async (route) => {
+    await route.fulfill(mockProcessResponse({
+      filename: 'source.png',
+      watermarked: true,
+      watermarkLayers: ['text'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await page.locator('#watermark-text').fill('Source');
+  await uploadFiles(page, makeFiles(2, 'source'));
+  await waitForDoneCount(page, 2);
+
+  await expect(page.locator('#watermark-preview-source-name')).toHaveText('source-1.png');
+  await page.locator('.tile__preview').nth(1).click();
+  await expect(page.locator('#watermark-preview-source-name')).toHaveText('source-2.png');
+});
+
+test('unsupported browser preview formats show a fallback message', async ({ page }) => {
+  await page.route('**/process', async (route) => {
+    await route.fulfill(mockProcessResponse({
+      filename: 'unsupported.png',
+      watermarked: true,
+      watermarkLayers: ['text'],
+    }));
+  });
+
+  await login(page);
+  await enableWatermark(page);
+  await page.locator('#watermark-text').fill('Fallback');
+  await uploadFiles(page, [{
+    name: 'unsupported.tiff',
+    mimeType: 'image/tiff',
+    buffer: tiffFixtureBuffer,
+  }]);
+
+  await expect(page.locator('#watermark-preview-state')).toContainText(
+    'This image format cannot be previewed in your browser. Processing still works on the server.'
+  );
+});
+
+test('legacy shared watermark settings migrate into per-layer tabs', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('compressify_settings', JSON.stringify({
+      compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
+      resize: { mode: 'original', width: null, height: null },
+      background: { enabled: false },
+      watermark: {
+        enabled: true,
+        text: 'Legacy',
+        color: 'black',
+        position: 'top-left',
+        opacity: 65,
+        size: 9,
+        angle: 20,
+        tileDensity: 7,
+      },
+    }));
+  });
+
+  await login(page);
+
+  await expect(page.locator('#watermark-toggle')).toBeChecked();
+  await expect(page.locator('#watermark-text')).toHaveValue('Legacy');
+  await expect(page.locator('#watermark-tab-text-status')).toHaveText('Ready');
+
+  await expect(page.locator('#watermark-text-position-control [data-value="top-left"]')).toHaveClass(/is-active/);
+  await expect(page.locator('#watermark-text-opacity-slider')).toHaveValue('65');
+  await expect(page.locator('#watermark-text-size-slider')).toHaveValue('9');
+  await expect(page.locator('#watermark-text-angle-slider')).toHaveValue('20');
+
+  await openWatermarkTab(page, 'logo');
+  await expect(page.locator('#watermark-logo-position-control [data-value="top-left"]')).toHaveClass(/is-active/);
+  await expect(page.locator('#watermark-logo-opacity-slider')).toHaveValue('65');
+  await expect(page.locator('#watermark-logo-size-slider')).toHaveValue('9');
+  await expect(page.locator('#watermark-logo-angle-slider')).toHaveValue('20');
+
+  await openWatermarkTab(page, 'qr');
+  await expect(page.locator('#watermark-qr-position-control [data-value="top-left"]')).toHaveClass(/is-active/);
+  await expect(page.locator('#watermark-qr-opacity-slider')).toHaveValue('65');
+  await expect(page.locator('#watermark-qr-size-slider')).toHaveValue('9');
+  await expect(page.locator('#watermark-qr-angle-slider')).toHaveValue('20');
 });
 
 test('shows a specific message when processing is rate limited', async ({ page }) => {

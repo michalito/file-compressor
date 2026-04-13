@@ -4,8 +4,8 @@
 import { $, createElement, icon, downloadBlob, base64ToUint8Array, formatToMime } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import { postForm, postJSON } from '../lib/api.js';
-import { state, updateFile, removeFile } from '../state/app-state.js';
-import { appendSettingsToFormData } from './settings.js';
+import { state, updateFile, removeFile, setWatermarkPreviewFileId } from '../state/app-state.js';
+import { appendSettingsToFormData, getCurrentProcessingSnapshot } from './settings.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 import { openCropModal } from './crop.js';
@@ -81,6 +81,11 @@ export function createImageTile(fileId, file, blobUrl) {
   // Set preview image
   const img = tile.querySelector('.tile__image');
   img.alt = `Preview of ${file.name}`;
+
+  const preview = tile.querySelector('.tile__preview');
+  if (preview) {
+    preview.addEventListener('click', () => setWatermarkPreviewFileId(fileId));
+  }
 
   // Load image to get dimensions
   const tempImg = new Image();
@@ -209,7 +214,7 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
 
     const formData = new FormData();
     formData.append('file', entry.file);
-    appendSettingsToFormData(formData);
+    await appendSettingsToFormData(formData);
 
     const response = await postForm('/process', formData, { signal });
     const result = await response.json();
@@ -230,7 +235,7 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
         filename: result.filename,
         metadata: resultMetadata,
       },
-      processedWithSettings: JSON.parse(JSON.stringify(state.settings)),
+      processedWithSettings: getCurrentProcessingSnapshot(),
     });
 
     // Update tile UI

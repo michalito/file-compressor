@@ -6,7 +6,25 @@
 import { $, $$ } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import * as storage from '../lib/storage.js';
-import { state, updateSettings, getSettings } from '../state/app-state.js';
+import {
+  state,
+  updateSettings,
+  getSettings,
+  getEffectiveWatermarkState,
+  getProcessingSnapshot,
+} from '../state/app-state.js';
+import {
+  initSegmentedControl,
+  setSegmentedValue,
+  setSegmentedDisabled,
+  toggleHidden,
+} from '../lib/form-controls.js';
+import {
+  initWatermarkEditor,
+  syncWatermarkEditor,
+  appendWatermarkSettings,
+  flushPendingWatermarkEditorUpdates,
+} from './watermark-editor.js';
 
 /* ── Constants ────────────────────────────────────────────────────── */
 
@@ -44,51 +62,6 @@ const QUALITY_DEFAULTS = {
 const BACKGROUND_REMOVAL_HINT = 'Subject isolation with rembg. Outputs a transparent PNG.';
 const LOCKED_COMPRESSION_HINT = 'Background removal forces lossless transparent PNG output.';
 
-/* ── Tool FormData builders ───────────────────────────────────────── */
-
-const tools = {
-  compress: {
-    toFormData(settings, formData) {
-      formData.append('compression_mode', settings.mode);
-      formData.append('output_format', settings.outputFormat || 'auto');
-      if (settings.mode !== 'lossless' && settings.outputFormat !== 'png' && settings.quality != null) {
-        formData.append('quality', settings.quality);
-      }
-    },
-  },
-  background: {
-    toFormData(settings, formData) {
-      if (settings.enabled) {
-        formData.append('remove_background', '1');
-      }
-    },
-  },
-  resize: {
-    toFormData(settings, formData) {
-      formData.append('resize_mode', settings.mode);
-      if (settings.mode === 'custom') {
-        if (settings.width) formData.append('max_width', settings.width);
-        if (settings.height) formData.append('max_height', settings.height);
-      }
-    },
-  },
-  watermark: {
-    toFormData(settings, formData) {
-      if (settings.enabled && settings.text.trim()) {
-        formData.append('watermark_text', settings.text.trim());
-        formData.append('watermark_position', settings.position);
-        formData.append('watermark_opacity', settings.opacity);
-        formData.append('watermark_color', settings.color);
-        formData.append('watermark_size', settings.size);
-        formData.append('watermark_angle', settings.angle ?? 0);
-        if (settings.position === 'tiled') {
-          formData.append('watermark_tile_density', settings.tileDensity);
-        }
-      }
-    },
-  },
-};
-
 /* ── Initialization ───────────────────────────────────────────────── */
 
 export function initSettings() {
@@ -104,7 +77,7 @@ export function initSettings() {
   initPresets();
   initAspectRatio();
   initBackground();
-  initWatermark();
+  initWatermarkEditor();
 
   // Apply persisted state to controls
   syncControlsFromState();
@@ -114,6 +87,8 @@ export function initSettings() {
     syncCompressionControls();
     updateSummary();
   });
+  bus.on('watermark:logoChanged', () => updateSummary());
+  bus.on('watermark:qrChanged', () => updateSummary());
 }
 
 /* ── Sidebar management ──────────────────────────────────────────── */
@@ -491,94 +466,6 @@ function initBackground() {
   });
 }
 
-/* ── Watermark ────────────────────────────────────────────────────── */
-
-function initWatermark() {
-  const toggle = $('#watermark-toggle');
-  const body = $('#watermark-body');
-  const textInput = $('#watermark-text');
-  if (!toggle || !body) return;
-
-  // Toggle
-  toggle.addEventListener('change', () => {
-    const enabled = toggle.checked;
-    body.classList.toggle('is-hidden', !enabled);
-    updateSettings('watermark', { enabled });
-  });
-
-  // Text input — commit on change (blur / Enter)
-  if (textInput) {
-    textInput.addEventListener('change', () => {
-      updateSettings('watermark', { text: textInput.value });
-    });
-  }
-
-  // Position segmented control
-  const posControl = $('#watermark-position-control');
-  if (posControl) {
-    initSegmentedControl(posControl, (value) => {
-      updateSettings('watermark', { position: value });
-      toggleHidden('#watermark-density-group', value !== 'tiled');
-    });
-  }
-
-  // Color segmented control
-  const colorControl = $('#watermark-color-control');
-  if (colorControl) {
-    initSegmentedControl(colorControl, (value) => {
-      updateSettings('watermark', { color: value });
-    });
-  }
-
-  // Opacity slider
-  const opacitySlider = $('#watermark-opacity-slider');
-  const opacityValue = $('#watermark-opacity-value');
-  if (opacitySlider) {
-    opacitySlider.addEventListener('input', () => {
-      if (opacityValue) opacityValue.textContent = `${opacitySlider.value}%`;
-    });
-    opacitySlider.addEventListener('change', () => {
-      updateSettings('watermark', { opacity: parseInt(opacitySlider.value, 10) });
-    });
-  }
-
-  // Size slider
-  const sizeSlider = $('#watermark-size-slider');
-  const sizeValue = $('#watermark-size-value');
-  if (sizeSlider) {
-    sizeSlider.addEventListener('input', () => {
-      if (sizeValue) sizeValue.textContent = sizeSlider.value;
-    });
-    sizeSlider.addEventListener('change', () => {
-      updateSettings('watermark', { size: parseInt(sizeSlider.value, 10) });
-    });
-  }
-
-  // Tile density slider
-  const densitySlider = $('#watermark-density-slider');
-  const densityValue = $('#watermark-density-value');
-  if (densitySlider) {
-    densitySlider.addEventListener('input', () => {
-      if (densityValue) densityValue.textContent = densitySlider.value;
-    });
-    densitySlider.addEventListener('change', () => {
-      updateSettings('watermark', { tileDensity: parseInt(densitySlider.value, 10) });
-    });
-  }
-
-  // Angle slider
-  const angleSlider = $('#watermark-angle-slider');
-  const angleValue = $('#watermark-angle-value');
-  if (angleSlider) {
-    angleSlider.addEventListener('input', () => {
-      if (angleValue) angleValue.textContent = `${angleSlider.value}\u00b0`;
-    });
-    angleSlider.addEventListener('change', () => {
-      updateSettings('watermark', { angle: parseInt(angleSlider.value, 10) });
-    });
-  }
-}
-
 function getEffectiveCompressSettings(settings = state.settings) {
   if (!settings.background?.enabled) {
     return settings.compress;
@@ -629,7 +516,7 @@ function syncCompressionControls() {
 /* ── Sync controls from persisted state ───────────────────────────── */
 
 function syncControlsFromState() {
-  const { resize, background, watermark } = state.settings;
+  const { resize, background } = state.settings;
 
   syncCompressionControls();
 
@@ -650,35 +537,7 @@ function syncControlsFromState() {
   if (bgToggle) bgToggle.checked = background.enabled;
 
   // Watermark
-  const wmToggle = $('#watermark-toggle');
-  const wmBody = $('#watermark-body');
-  const wmText = $('#watermark-text');
-  if (wmToggle) wmToggle.checked = watermark.enabled;
-  if (wmBody) wmBody.classList.toggle('is-hidden', !watermark.enabled);
-  if (wmText) wmText.value = watermark.text || '';
-  setSegmentedValue('#watermark-position-control', watermark.position);
-  setSegmentedValue('#watermark-color-control', watermark.color);
-
-  const opacitySlider = $('#watermark-opacity-slider');
-  const opacityValue = $('#watermark-opacity-value');
-  if (opacitySlider) opacitySlider.value = watermark.opacity;
-  if (opacityValue) opacityValue.textContent = `${watermark.opacity}%`;
-
-  const sizeSlider = $('#watermark-size-slider');
-  const sizeValue = $('#watermark-size-value');
-  if (sizeSlider) sizeSlider.value = watermark.size;
-  if (sizeValue) sizeValue.textContent = watermark.size;
-
-  const densitySlider = $('#watermark-density-slider');
-  const densityValue = $('#watermark-density-value');
-  if (densitySlider) densitySlider.value = watermark.tileDensity;
-  if (densityValue) densityValue.textContent = watermark.tileDensity;
-  toggleHidden('#watermark-density-group', watermark.position !== 'tiled');
-
-  const angleSlider = $('#watermark-angle-slider');
-  const angleValueEl = $('#watermark-angle-value');
-  if (angleSlider) angleSlider.value = watermark.angle ?? 0;
-  if (angleValueEl) angleValueEl.textContent = `${watermark.angle ?? 0}\u00b0`;
+  syncWatermarkEditor();
 
   updateSummary();
 }
@@ -689,7 +548,7 @@ function updateSummary() {
   const el = $('#settings-summary');
   if (!el) return;
 
-  const { resize, background, watermark } = state.settings;
+  const { resize, background } = state.settings;
   const compress = getEffectiveCompressSettings();
   const parts = [];
 
@@ -718,104 +577,14 @@ function updateSummary() {
   }
 
   // Watermark
-  if (watermark.enabled && watermark.text.trim()) {
+  if (getEffectiveWatermarkState().enabled) {
     parts.push('Watermark');
   }
 
   el.textContent = parts.join(' \u00b7 ');
 }
 
-/* ── Segmented control helpers ────────────────────────────────────── */
-
-function initSegmentedControl(container, onChange) {
-  const items = container.querySelectorAll('.segmented-control__item');
-
-  items.forEach((item) => {
-    item.addEventListener('click', () => {
-      // Update visual state
-      items.forEach((i) => {
-        i.classList.remove('is-active');
-        i.setAttribute('aria-checked', 'false');
-      });
-      item.classList.add('is-active');
-      item.setAttribute('aria-checked', 'true');
-
-      onChange(item.dataset.value);
-    });
-
-    // Arrow key navigation
-    item.addEventListener('keydown', (e) => {
-      const arr = [...items];
-      const idx = arr.indexOf(item);
-      let target = null;
-
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        target = arr[(idx + 1) % arr.length];
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        target = arr[(idx - 1 + arr.length) % arr.length];
-      }
-
-      if (target) {
-        e.preventDefault();
-        target.focus();
-        target.click();
-      }
-    });
-  });
-
-  // Set tabindex for roving tabindex pattern
-  items.forEach((item, i) => {
-    item.setAttribute('tabindex', item.classList.contains('is-active') ? '0' : '-1');
-  });
-
-  // Update tabindex on click
-  container.addEventListener('click', () => {
-    items.forEach((item) => {
-      item.setAttribute('tabindex', item.classList.contains('is-active') ? '0' : '-1');
-    });
-  });
-}
-
-function setSegmentedValue(selector, value) {
-  const container = $(selector);
-  if (!container) return;
-
-  const items = container.querySelectorAll('.segmented-control__item');
-  items.forEach((item) => {
-    const isMatch = item.dataset.value === value;
-    item.classList.toggle('is-active', isMatch);
-    item.setAttribute('aria-checked', String(isMatch));
-    item.setAttribute('tabindex', isMatch ? '0' : '-1');
-  });
-}
-
-function setSegmentedDisabled(selector, disabled) {
-  const container = $(selector);
-  if (!container) return;
-
-  container.classList.toggle('is-disabled', disabled);
-  container.setAttribute('aria-disabled', String(disabled));
-
-  const items = container.querySelectorAll('.segmented-control__item');
-  items.forEach((item) => {
-    item.disabled = disabled;
-    item.setAttribute('aria-disabled', String(disabled));
-    if (disabled) {
-      item.setAttribute('tabindex', '-1');
-    } else if (item.classList.contains('is-active')) {
-      item.setAttribute('tabindex', '0');
-    } else {
-      item.setAttribute('tabindex', '-1');
-    }
-  });
-}
-
 /* ── Utility helpers ──────────────────────────────────────────────── */
-
-function toggleHidden(selector, hidden) {
-  const el = $(selector);
-  if (el) el.classList.toggle('is-hidden', hidden);
-}
 
 function getDefaultQuality(mode, format) {
   if (format === 'png') return null; // PNG is lossless, no quality
@@ -831,17 +600,41 @@ function syncSliderValue(quality) {
   if (output && quality != null) output.textContent = quality;
 }
 
+function appendCompressionSettings(settings, formData) {
+  formData.append('compression_mode', settings.mode);
+  formData.append('output_format', settings.outputFormat || 'auto');
+  if (settings.mode !== 'lossless' && settings.outputFormat !== 'png' && settings.quality != null) {
+    formData.append('quality', settings.quality);
+  }
+}
+
+function appendBackgroundSettings(settings, formData) {
+  if (settings.enabled) {
+    formData.append('remove_background', '1');
+  }
+}
+
+function appendResizeSettings(settings, formData) {
+  formData.append('resize_mode', settings.mode);
+  if (settings.mode === 'custom') {
+    if (settings.width) formData.append('max_width', settings.width);
+    if (settings.height) formData.append('max_height', settings.height);
+  }
+}
+
 /**
  * Build FormData with current settings for processing.
  * @param {FormData} formData
  */
-export function appendSettingsToFormData(formData) {
+export async function appendSettingsToFormData(formData) {
   const settings = getSettings();
-  const effectiveSettings = {
-    ...settings,
-    compress: getEffectiveCompressSettings(settings),
-  };
-  Object.entries(tools).forEach(([key, tool]) => {
-    tool.toFormData(effectiveSettings[key], formData);
-  });
+  appendCompressionSettings(getEffectiveCompressSettings(settings), formData);
+  appendBackgroundSettings(settings.background, formData);
+  appendResizeSettings(settings.resize, formData);
+  await appendWatermarkSettings(formData);
+}
+
+export function getCurrentProcessingSnapshot() {
+  flushPendingWatermarkEditorUpdates();
+  return getProcessingSnapshot();
 }

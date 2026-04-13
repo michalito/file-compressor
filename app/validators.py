@@ -5,6 +5,9 @@ Provides validation functions for all user inputs.
 
 import re
 from typing import Optional, Tuple
+from urllib.parse import urlparse
+
+from PIL import Image, UnidentifiedImageError
 from werkzeug.datastructures import FileStorage
 
 # Constants
@@ -19,6 +22,10 @@ ALLOWED_OUTPUT_FORMATS = {'auto', 'webp', 'jpeg', 'png'}
 MIN_QUALITY = 1
 MAX_QUALITY = 100
 MAX_WATERMARK_LENGTH = 50
+MAX_WATERMARK_QR_URL_LENGTH = 2048
+MAX_WATERMARK_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+MAX_WATERMARK_IMAGE_DIMENSION = 4096
+MAX_WATERMARK_IMAGE_PIXELS = MAX_WATERMARK_IMAGE_DIMENSION * MAX_WATERMARK_IMAGE_DIMENSION
 ALLOWED_WATERMARK_POSITIONS = {'bottom-right', 'bottom-left', 'top-right', 'top-left', 'center', 'tiled'}
 ALLOWED_WATERMARK_COLORS = {'white', 'black', 'auto'}
 ALLOWED_ROTATIONS = {0, 90, 180, 270}
@@ -251,20 +258,30 @@ def validate_watermark_position(position: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def validate_watermark_options(opacity: int, size: int, color: str,
-                               tile_density: int = 5,
-                               angle: int = 0) -> Tuple[bool, Optional[str]]:
+def validate_watermark_color(color: str) -> Tuple[bool, Optional[str]]:
+    if color not in ALLOWED_WATERMARK_COLORS:
+        return False, f"Invalid watermark color. Allowed: {', '.join(sorted(ALLOWED_WATERMARK_COLORS))}"
+
+    return True, None
+
+
+def validate_watermark_layer_options(position: str,
+                                     opacity: int,
+                                     size: int,
+                                     angle: int = 0,
+                                     tile_density: int = 5) -> Tuple[bool, Optional[str]]:
     """
-    Validate watermark opacity, size, color, tile density, and angle.
+    Validate per-layer watermark transform options.
     """
+    is_valid, error_msg = validate_watermark_position(position)
+    if not is_valid:
+        return False, error_msg
+
     if not isinstance(opacity, int) or opacity < 10 or opacity > 100:
         return False, "Watermark opacity must be between 10 and 100"
 
     if not isinstance(size, int) or size < 1 or size > 20:
         return False, "Watermark size must be between 1 and 20"
-
-    if color not in ALLOWED_WATERMARK_COLORS:
-        return False, f"Invalid watermark color. Allowed: {', '.join(sorted(ALLOWED_WATERMARK_COLORS))}"
 
     if not isinstance(tile_density, int) or tile_density < 1 or tile_density > 10:
         return False, "Watermark tile density must be between 1 and 10"
@@ -273,6 +290,68 @@ def validate_watermark_options(opacity: int, size: int, color: str,
         return False, "Watermark angle must be between -180 and 180"
 
     return True, None
+
+
+def _validate_watermark_png_file(file: FileStorage, label: str) -> Tuple[bool, Optional[str]]:
+    if not file or not file.filename:
+        return False, f"{label} is required"
+
+    if file.mimetype not in ('image/png', 'application/octet-stream'):
+        return False, f"{label} must be a PNG image"
+
+    stream = file.stream
+    pos = stream.tell()
+    try:
+        stream.seek(0, 2)
+        size_bytes = stream.tell()
+        stream.seek(0)
+
+        if not size_bytes:
+            return False, f"{label} is required"
+
+        if size_bytes > MAX_WATERMARK_IMAGE_SIZE_BYTES:
+            return False, f"{label} must be 5 MB or smaller"
+
+        with Image.open(stream) as img:
+            if img.format != 'PNG':
+                return False, f"{label} must be a PNG image"
+
+            width, height = img.size
+    except (UnidentifiedImageError, OSError):
+        return False, f"{label} is not a valid PNG image"
+    finally:
+        stream.seek(pos)
+
+    if width > MAX_WATERMARK_IMAGE_DIMENSION or height > MAX_WATERMARK_IMAGE_DIMENSION:
+        return False, f"{label} must be {MAX_WATERMARK_IMAGE_DIMENSION}px or smaller on each side"
+
+    if width * height > MAX_WATERMARK_IMAGE_PIXELS:
+        return False, f"{label} exceeds the maximum supported pixel count"
+
+    return True, None
+
+
+def validate_watermark_logo(file: FileStorage) -> Tuple[bool, Optional[str]]:
+    return _validate_watermark_png_file(file, 'Watermark logo')
+
+
+def validate_watermark_qr_url(url: Optional[str]) -> Tuple[bool, Optional[str]]:
+    value = (url or '').strip()
+    if not value:
+        return False, "QR watermark URL is required"
+
+    if len(value) > MAX_WATERMARK_QR_URL_LENGTH:
+        return False, f"QR watermark URL must be {MAX_WATERMARK_QR_URL_LENGTH} characters or fewer"
+
+    parsed = urlparse(value)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        return False, "QR watermark URL must be an absolute http:// or https:// URL"
+
+    return True, None
+
+
+def validate_watermark_qr_image(file: FileStorage) -> Tuple[bool, Optional[str]]:
+    return _validate_watermark_png_file(file, 'QR watermark image')
 
 
 def validate_crop_coordinates(x: int, y: int, width: int, height: int,
