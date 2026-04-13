@@ -8,13 +8,13 @@ from .compression import ImageCompressor, ImageValidationError, BackgroundRemova
 from .auth import RateLimitExceeded, login_required
 from .validators import (
     validate_file, validate_compression_mode, validate_resize_mode,
-    validate_dimensions, validate_quality, validate_output_format,
+    validate_resize_dimensions, validate_quality, validate_output_format,
     validate_theme, validate_download_data, validate_crop_coordinates,
     validate_rotation, sanitize_filename,
     validate_watermark_text, validate_watermark_color, validate_watermark_layer_options,
     validate_watermark_logo, validate_watermark_qr_url, validate_watermark_qr_image,
     MAX_WATERMARK_IMAGE_PIXELS,
-    parse_boolean_form_value,
+    parse_boolean_form_value, parse_optional_int_form_value,
 )
 from .forms import LoginForm
 
@@ -185,11 +185,24 @@ def process_image():
     # Get processing parameters
     compression_mode = request.form.get('compression_mode', 'lossless')
     resize_mode = request.form.get('resize_mode', 'original')
-    max_width = request.form.get('max_width', type=int)
-    max_height = request.form.get('max_height', type=int)
+    max_width_raw = request.form.get('max_width')
+    max_height_raw = request.form.get('max_height')
     quality = request.form.get('quality', type=int)
     output_format = request.form.get('output_format', 'auto')
     remove_background_raw = request.form.get('remove_background')
+
+    # Validate resize mode before parsing resize dimensions.
+    is_valid, error_msg = validate_resize_mode(resize_mode)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    is_valid, max_width, error_msg = parse_optional_int_form_value(max_width_raw, 'width')
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    is_valid, max_height, error_msg = parse_optional_int_form_value(max_height_raw, 'height')
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
 
     is_valid, remove_background, error_msg = parse_boolean_form_value(
         remove_background_raw, 'remove_background')
@@ -206,13 +219,8 @@ def process_image():
     if not is_valid:
         return jsonify({'error': error_msg}), 400
 
-    # Validate resize mode
-    is_valid, error_msg = validate_resize_mode(resize_mode)
-    if not is_valid:
-        return jsonify({'error': error_msg}), 400
-
     # Validate dimensions
-    is_valid, error_msg = validate_dimensions(max_width, max_height)
+    is_valid, error_msg = validate_resize_dimensions(resize_mode, max_width, max_height)
     if not is_valid:
         return jsonify({'error': error_msg}), 400
 

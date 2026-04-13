@@ -309,4 +309,31 @@ class TestProcessRoute:
         body = resp.get_json()
         # Should be resized (aspect ratio preserved)
         dims = body['metadata']['final_dimensions']
-        assert dims[0] <= 400
+        assert dims == [400, 300]
+        resize = body['metadata']['resize']
+        assert resize['mode'] == 'custom'
+        assert resize['requested_width'] == 400
+        assert resize['requested_height'] is None
+        assert resize['active'] is True
+        assert resize['changed'] is True
+        assert resize['upscaled'] is False
+
+    def test_process_heic_with_resize_upscale(self, auth_client):
+        """HEIC file can be upscaled while preserving aspect ratio."""
+        data = make_heif_image(size=(300, 200))
+        resp = auth_client.post('/process',
+            data={
+                'file': (io.BytesIO(data), 'photo.heic'),
+                'compression_mode': 'lossless',
+                'resize_mode': 'custom',
+                'max_width': '1920',
+                'max_height': '1080',
+            },
+            content_type='multipart/form-data')
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body['metadata']['final_dimensions'] == [1620, 1080]
+        resize = body['metadata']['resize']
+        assert resize['active'] is True
+        assert resize['changed'] is True
+        assert resize['upscaled'] is True

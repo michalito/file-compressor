@@ -32,6 +32,7 @@ ALLOWED_ROTATIONS = {0, 90, 180, 270}
 
 TRUE_VALUES = {'1', 'true', 'on', 'yes'}
 FALSE_VALUES = {'0', 'false', 'off', 'no'}
+WHOLE_NUMBER_PATTERN = re.compile(r'^\d+$')
 
 
 def validate_file(file: FileStorage) -> Tuple[bool, Optional[str]]:
@@ -117,13 +118,49 @@ def validate_dimensions(width: Optional[int], height: Optional[int]) -> Tuple[bo
     """
     if width is not None:
         if not isinstance(width, int) or width < MIN_DIMENSION or width > MAX_DIMENSION:
-            return False, f"Invalid width. Must be between {MIN_DIMENSION} and {MAX_DIMENSION}"
+            return False, f"Width must be between {MIN_DIMENSION} and {MAX_DIMENSION} px."
 
     if height is not None:
         if not isinstance(height, int) or height < MIN_DIMENSION or height > MAX_DIMENSION:
-            return False, f"Invalid height. Must be between {MIN_DIMENSION} and {MAX_DIMENSION}"
+            return False, f"Height must be between {MIN_DIMENSION} and {MAX_DIMENSION} px."
 
     return True, None
+
+
+def validate_resize_dimensions(mode: str, width: Optional[int], height: Optional[int]) -> Tuple[bool, Optional[str]]:
+    """
+    Validate resize dimensions for the selected resize mode.
+
+    Custom resize requires at least one dimension. Each provided dimension must
+    be within the allowed range.
+    """
+    if mode == 'custom' and width is None and height is None:
+        return False, "Enter a width, a height, or both."
+
+    return validate_dimensions(width, height)
+
+
+def parse_optional_int_form_value(value: Optional[str], field_name: str) -> Tuple[bool, Optional[int], Optional[str]]:
+    """
+    Parse an optional whole-number form field without silently coercing errors.
+
+    Empty values are treated as missing. Non-empty values must be ASCII digits
+    only so malformed inputs like '400.5', '1e3', or '-1' are rejected.
+    """
+    if value is None:
+        return True, None, None
+
+    normalized = value.strip()
+    if normalized == '':
+        return True, None, None
+
+    if not WHOLE_NUMBER_PATTERN.fullmatch(normalized):
+        return False, None, (
+            f"Enter a whole-number {field_name} between "
+            f"{MIN_DIMENSION} and {MAX_DIMENSION}."
+        )
+
+    return True, int(normalized), None
 
 
 def validate_quality(quality: Optional[int]) -> Tuple[bool, Optional[str]]:

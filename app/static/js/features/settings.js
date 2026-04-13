@@ -33,12 +33,11 @@ const LEGACY_PANEL_EXPANDED_KEY = 'compressify_panel_expanded';
 const SIDEBAR_TRANSITION_DISABLED_CLASS = 'is-sidebar-transition-disabled';
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const MOBILE_MQ = window.matchMedia('(max-width: 640px)');
+const MAX_RESIZE_DIMENSION = 10000;
 let resizeAspectRatio = null;
-
-const MODE_HINTS = {
-  lossless: 'Highest quality, preserves original format (HEIC outputs as PNG)',
-  web: 'Great quality, ~40\u201370% smaller files',
-  high: 'Smallest files, noticeable quality loss',
+let resizeValidationState = {
+  processable: true,
+  resize: { valid: true, message: '', width: null, height: null },
 };
 
 const MODE_LABELS = {
@@ -59,9 +58,6 @@ const QUALITY_DEFAULTS = {
   high: { auto: 50, webp: 40, jpeg: 60 },
 };
 
-const BACKGROUND_REMOVAL_HINT = 'Subject isolation with rembg. Outputs a transparent PNG.';
-const LOCKED_COMPRESSION_HINT = 'Background removal forces lossless transparent PNG output.';
-
 /* ── Initialization ───────────────────────────────────────────────── */
 
 export function initSettings() {
@@ -70,6 +66,7 @@ export function initSettings() {
 
   initSidebar();
   initSectionAccordions();
+  initToggleSectionHeaders();
   initCompressionMode();
   initQualitySlider();
   initFormatControl();
@@ -184,13 +181,28 @@ function runWithoutSidebarTransitions(appLayout, callback) {
 
 function initSectionAccordions() {
   $$('.sidebar__section[data-section]').forEach((section) => {
-    const header = section.querySelector('.sidebar__section-header');
-    // Only wire up accordion on button headers (not static toggle headers)
-    if (!header || header.classList.contains('sidebar__section-header--static')) return;
+    const header = section.querySelector('[data-accordion-trigger]');
+    if (!header) return;
 
     header.addEventListener('click', () => {
       const isOpen = section.classList.toggle('is-open');
       header.setAttribute('aria-expanded', String(isOpen));
+    });
+  });
+}
+
+function initToggleSectionHeaders() {
+  $$('.sidebar__section-header[data-toggle-checkbox]').forEach((header) => {
+    const checkboxId = header.dataset.toggleCheckbox;
+    const checkbox = checkboxId ? document.getElementById(checkboxId) : null;
+    if (!checkbox) return;
+
+    header.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.sidebar__toggle') || target.closest('.sidebar__tooltip-trigger')) return;
+
+      checkbox.click();
     });
   });
 }
@@ -315,10 +327,6 @@ function initCompressionMode() {
     const hideQuality = value === 'lossless' || format === 'png';
     toggleHidden('#quality-slider-group', hideQuality);
 
-    // Update hint
-    const hint = $('#compression-hint');
-    if (hint) hint.textContent = MODE_HINTS[value] || '';
-
     // Sync quality slider
     if (!hideQuality) {
       syncSliderValue(quality);
@@ -340,7 +348,7 @@ function initQualitySlider() {
 
   // Commit on release
   slider.addEventListener('change', () => {
-    updateSettings('compress', { quality: parseInt(slider.value, 10) });
+    updateSettings('compress', { quality: Number.parseInt(slider.value, 10) });
   });
 }
 
@@ -369,21 +377,17 @@ function initResizeMode() {
 
   toggle.addEventListener('change', () => {
     const enabled = toggle.checked;
-    const section = $('#custom-size-section');
-    if (section) {
-      section.classList.toggle('is-open', enabled);
-      section.setAttribute('aria-hidden', String(!enabled));
-    }
+    setResizeSectionVisibility(enabled);
 
     if (!enabled) {
-      resizeAspectRatio = null;
-      syncLockButton();
       clearActivePreset();
-      updateSettings('resize', { mode: 'original', width: null, height: null });
+      restoreResizeControlsFromState();
+      updateSettings('resize', { mode: 'original' });
+      syncResizeValidation({ emit: true, persist: false });
     } else {
-      const w = parseInt($('#custom-width')?.value, 10) || null;
-      const h = parseInt($('#custom-height')?.value, 10) || null;
-      updateSettings('resize', { mode: 'custom', width: w, height: h });
+      restoreResizeControlsFromState();
+      updateSettings('resize', { mode: 'custom' });
+      syncResizeValidation({ emit: true });
     }
   });
 }
@@ -393,8 +397,8 @@ function initResizeMode() {
 function initPresets() {
   $$('.preset-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const w = parseInt(btn.dataset.width, 10);
-      const h = parseInt(btn.dataset.height, 10);
+      const w = Number.parseInt(btn.dataset.width, 10);
+      const h = Number.parseInt(btn.dataset.height, 10);
 
       const widthInput = $('#custom-width');
       const heightInput = $('#custom-height');
@@ -404,20 +408,17 @@ function initPresets() {
 
       // Mark this preset as active, clear others
       setActivePreset(btn);
-      syncLockButton();
 
       // Ensure toggle is on
       const toggle = $('#resize-toggle');
       if (toggle && !toggle.checked) {
         toggle.checked = true;
-        const section = $('#custom-size-section');
-        if (section) {
-          section.classList.add('is-open');
-          section.setAttribute('aria-hidden', 'false');
-        }
+        setResizeSectionVisibility(true);
       }
 
-      updateSettings('resize', { mode: 'custom', width: w, height: h });
+      updateSettings('resize', { mode: 'custom', width: w, height: h, locked: true });
+      syncLockButton();
+      syncResizeValidation({ emit: true, persist: false });
     });
   });
 }
@@ -438,12 +439,12 @@ function clearActivePreset() {
 
 /** Check if current dimensions match any preset; if so, highlight it. */
 function syncActivePreset() {
-  const w = parseInt($('#custom-width')?.value, 10);
-  const h = parseInt($('#custom-height')?.value, 10);
+  const w = Number.parseInt($('#custom-width')?.value, 10);
+  const h = Number.parseInt($('#custom-height')?.value, 10);
 
   $$('.preset-btn').forEach((btn) => {
-    const pw = parseInt(btn.dataset.width, 10);
-    const ph = parseInt(btn.dataset.height, 10);
+    const pw = Number.parseInt(btn.dataset.width, 10);
+    const ph = Number.parseInt(btn.dataset.height, 10);
     btn.classList.toggle('is-active', pw === w && ph === h);
   });
 }
@@ -458,10 +459,13 @@ function initAspectRatio() {
   let updating = false;
 
   const syncOther = (changed, other) => {
-    if (!resizeAspectRatio || updating) return;
+    if (!isAspectRatioLocked() || updating) return;
+    ensureResizeAspectRatio();
+    if (!resizeAspectRatio) return;
+
     updating = true;
-    const val = parseInt(changed.value, 10);
-    if (!isNaN(val)) {
+    const val = Number.parseInt(changed.value, 10);
+    if (Number.isFinite(val)) {
       other.value = changed === widthInput
         ? Math.round(val / resizeAspectRatio)
         : Math.round(val * resizeAspectRatio);
@@ -472,24 +476,14 @@ function initAspectRatio() {
   widthInput.addEventListener('input', () => {
     syncOther(widthInput, heightInput);
     syncActivePreset();
+    syncResizeValidation({ emit: true });
   });
 
   heightInput.addEventListener('input', () => {
     syncOther(heightInput, widthInput);
     syncActivePreset();
+    syncResizeValidation({ emit: true });
   });
-
-  // Commit dimensions on change (blur / Enter)
-  const commitDimensions = () => {
-    const toggle = $('#resize-toggle');
-    if (!toggle?.checked) return;
-    const w = parseInt(widthInput.value, 10) || null;
-    const h = parseInt(heightInput.value, 10) || null;
-    updateSettings('resize', { mode: 'custom', width: w, height: h });
-  };
-
-  widthInput.addEventListener('change', commitDimensions);
-  heightInput.addEventListener('change', commitDimensions);
 }
 
 /* ── Aspect ratio lock toggle ────────────────────────────────────── */
@@ -499,18 +493,21 @@ function initAspectRatioLock() {
   if (!lockBtn) return;
 
   lockBtn.addEventListener('click', () => {
-    if (resizeAspectRatio !== null) {
-      // Unlock
+    if (isAspectRatioLocked()) {
       resizeAspectRatio = null;
+      updateSettings('resize', { locked: false });
     } else {
-      // Lock — compute ratio from current values
-      const w = parseInt($('#custom-width')?.value, 10);
-      const h = parseInt($('#custom-height')?.value, 10);
+      const w = Number.parseInt($('#custom-width')?.value, 10);
+      const h = Number.parseInt($('#custom-height')?.value, 10);
       if (w && h) {
         resizeAspectRatio = w / h;
+        updateSettings('resize', { locked: true });
+      } else {
+        return;
       }
     }
     syncLockButton();
+    syncResizeValidation({ emit: true, persist: false });
   });
 }
 
@@ -518,23 +515,202 @@ function syncLockButton() {
   const lockBtn = $('#aspect-ratio-toggle');
   if (!lockBtn) return;
 
-  const isLocked = resizeAspectRatio !== null;
+  const isLocked = isAspectRatioLocked();
   lockBtn.setAttribute('aria-pressed', String(isLocked));
   lockBtn.setAttribute('title', isLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio');
   lockBtn.setAttribute('aria-label', isLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio');
+}
+
+function isAspectRatioLocked() {
+  return Boolean(state.settings.resize?.locked);
+}
+
+function setResizeSectionVisibility(enabled) {
+  const section = $('#custom-size-section');
+  if (!section) return;
+
+  section.classList.toggle('is-open', enabled);
+  section.setAttribute('aria-hidden', String(!enabled));
+}
+
+function restoreResizeControlsFromState() {
+  const widthInput = $('#custom-width');
+  const heightInput = $('#custom-height');
+  const { width, height, locked } = state.settings.resize;
+
+  if (widthInput) widthInput.value = width ?? '';
+  if (heightInput) heightInput.value = height ?? '';
+
+  resizeAspectRatio = locked && width && height ? width / height : null;
+  syncLockButton();
+  syncActivePreset();
+}
+
+function parseResizeDraftDimension(rawValue, label) {
+  const normalized = String(rawValue ?? '').trim();
+  if (!normalized) {
+    return { valid: true, value: null, message: '' };
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return {
+      valid: false,
+      value: null,
+      message: `Enter a whole-number ${label.toLowerCase()} between 1 and ${MAX_RESIZE_DIMENSION}.`,
+    };
+  }
+
+  const value = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(value) || value < 1 || value > MAX_RESIZE_DIMENSION) {
+    return {
+      valid: false,
+      value: null,
+      message: `${label} must be between 1 and ${MAX_RESIZE_DIMENSION} px.`,
+    };
+  }
+
+  return { valid: true, value, message: '' };
+}
+
+function computeResizeValidation() {
+  const toggle = $('#resize-toggle');
+  const enabled = toggle ? toggle.checked : state.settings.resize.mode === 'custom';
+  if (!enabled) {
+    return {
+      processable: true,
+      resize: { valid: true, message: '', width: null, height: null },
+    };
+  }
+
+  const widthResult = parseResizeDraftDimension($('#custom-width')?.value, 'Width');
+  if (!widthResult.valid) {
+    return {
+      processable: false,
+      resize: { valid: false, message: widthResult.message, width: null, height: null },
+    };
+  }
+
+  const heightResult = parseResizeDraftDimension($('#custom-height')?.value, 'Height');
+  if (!heightResult.valid) {
+    return {
+      processable: false,
+      resize: { valid: false, message: heightResult.message, width: null, height: null },
+    };
+  }
+
+  if (widthResult.value == null && heightResult.value == null) {
+    return {
+      processable: false,
+      resize: {
+        valid: false,
+        message: 'Enter a width, a height, or both.',
+        width: null,
+        height: null,
+      },
+    };
+  }
+
+  return {
+    processable: true,
+    resize: {
+      valid: true,
+      message: '',
+      width: widthResult.value,
+      height: heightResult.value,
+    },
+  };
+}
+
+function setResizeValidationMessage(message) {
+  const errorEl = $('#resize-error');
+  if (!errorEl) return;
+
+  errorEl.textContent = message || '';
+  errorEl.classList.toggle('is-hidden', !message);
+}
+
+function applyResizeValidationState(validation) {
+  const enabled = $('#resize-toggle')?.checked ?? state.settings.resize.mode === 'custom';
+  const invalid = enabled && !validation.resize.valid;
+  const inputsRow = $('.dimensions-group__inputs');
+  const widthInput = $('#custom-width');
+  const heightInput = $('#custom-height');
+
+  inputsRow?.classList.toggle('is-invalid', invalid);
+  [widthInput, heightInput].forEach((input) => {
+    if (!input) return;
+    input.classList.toggle('is-invalid', invalid);
+    input.setAttribute('aria-invalid', String(invalid));
+  });
+
+  setResizeValidationMessage(invalid ? validation.resize.message : '');
+}
+
+function ensureResizeAspectRatio() {
+  if (!isAspectRatioLocked() || resizeAspectRatio) return;
+
+  const widthResult = parseResizeDraftDimension($('#custom-width')?.value, 'Width');
+  const heightResult = parseResizeDraftDimension($('#custom-height')?.value, 'Height');
+  if (widthResult.valid && heightResult.valid && widthResult.value && heightResult.value) {
+    resizeAspectRatio = widthResult.value / heightResult.value;
+  }
+}
+
+function persistValidResize(validation) {
+  const toggle = $('#resize-toggle');
+  if (!toggle?.checked || !validation.resize.valid) return;
+
+  const nextResize = {
+    mode: 'custom',
+    width: validation.resize.width,
+    height: validation.resize.height,
+  };
+
+  if (
+    state.settings.resize.mode !== nextResize.mode ||
+    state.settings.resize.width !== nextResize.width ||
+    state.settings.resize.height !== nextResize.height
+  ) {
+    updateSettings('resize', nextResize);
+  }
+}
+
+function syncResizeValidation({ emit = true, persist = true } = {}) {
+  const validation = computeResizeValidation();
+  resizeValidationState = validation;
+
+  if (persist) {
+    persistValidResize(validation);
+  }
+
+  if (
+    validation.resize.valid &&
+    isAspectRatioLocked() &&
+    !resizeAspectRatio &&
+    validation.resize.width &&
+    validation.resize.height
+  ) {
+    resizeAspectRatio = validation.resize.width / validation.resize.height;
+  }
+
+  applyResizeValidationState(validation);
+  updateSummary();
+
+  if (emit) {
+    bus.emit('settings:validationChanged', validation);
+  }
+
+  return validation;
 }
 
 /* ── Background removal ──────────────────────────────────────────── */
 
 function initBackground() {
   const toggle = $('#background-toggle');
-  const hint = $('#background-hint');
   if (!toggle) return;
 
   toggle.addEventListener('change', () => {
-    const enabled = toggle.checked;
-    if (hint) hint.classList.toggle('is-hidden', !enabled);
-    updateSettings('background', { enabled });
+    updateSettings('background', { enabled: toggle.checked });
     syncCompressionControls();
   });
 }
@@ -560,18 +736,6 @@ function syncCompressionControls() {
   setSegmentedValue('#format-control', compress.outputFormat || 'auto');
   setSegmentedDisabled('#compression-mode-control', backgroundEnabled);
   setSegmentedDisabled('#format-control', backgroundEnabled);
-
-  const compressionHint = $('#compression-hint');
-  if (compressionHint) {
-    compressionHint.textContent = MODE_HINTS[compress.mode] || '';
-  }
-
-  const backgroundHint = $('#background-hint');
-  if (backgroundHint) {
-    backgroundHint.textContent = backgroundEnabled ? LOCKED_COMPRESSION_HINT : BACKGROUND_REMOVAL_HINT;
-    backgroundHint.classList.toggle('sidebar__hint--warning', backgroundEnabled);
-    backgroundHint.classList.toggle('is-hidden', !backgroundEnabled);
-  }
 
   const qualitySlider = $('#quality-slider');
   if (qualitySlider) {
@@ -601,26 +765,13 @@ function syncControlsFromState() {
   if (customSection) {
     // Suppress animation on initial load
     customSection.style.transition = 'none';
-    customSection.classList.toggle('is-open', isCustom);
-    customSection.setAttribute('aria-hidden', String(!isCustom));
+    setResizeSectionVisibility(isCustom);
     requestAnimationFrame(() => {
       customSection.style.transition = '';
     });
   }
-  if (resize.width) {
-    const w = $('#custom-width');
-    if (w) w.value = resize.width;
-  }
-  if (resize.height) {
-    const h = $('#custom-height');
-    if (h) h.value = resize.height;
-  }
-  // Restore aspect ratio from persisted dimensions
-  if (resize.width && resize.height) {
-    resizeAspectRatio = resize.width / resize.height;
-  }
-  syncLockButton();
-  syncActivePreset();
+  restoreResizeControlsFromState();
+  syncResizeValidation({ emit: true, persist: false });
 
   // Background removal
   const bgToggle = $('#background-toggle');
@@ -639,6 +790,8 @@ function updateSummary() {
   if (!el) return;
 
   const { resize, background } = state.settings;
+  const resizeEnabled = $('#resize-toggle')?.checked ?? resize.mode === 'custom';
+  const resizeValidation = resizeValidationState;
   const compress = getEffectiveCompressSettings();
   const parts = [];
 
@@ -656,10 +809,16 @@ function updateSummary() {
   }
 
   // Resize
-  if (resize.mode === 'custom' && resize.width && resize.height) {
-    parts.push(`${resize.width}\u00d7${resize.height}`);
-  } else {
+  if (!resizeEnabled) {
     parts.push('Original size');
+  } else if (!resizeValidation.resize.valid) {
+    parts.push('Resize needs input');
+  } else if (resizeValidation.resize.width != null && resizeValidation.resize.height != null) {
+    parts.push(`Fit ${resizeValidation.resize.width}\u00d7${resizeValidation.resize.height}`);
+  } else if (resizeValidation.resize.width != null) {
+    parts.push(`Fit width ${resizeValidation.resize.width}px`);
+  } else if (resizeValidation.resize.height != null) {
+    parts.push(`Fit height ${resizeValidation.resize.height}px`);
   }
 
   if (background.enabled) {
@@ -707,8 +866,8 @@ function appendBackgroundSettings(settings, formData) {
 function appendResizeSettings(settings, formData) {
   formData.append('resize_mode', settings.mode);
   if (settings.mode === 'custom') {
-    if (settings.width) formData.append('max_width', settings.width);
-    if (settings.height) formData.append('max_height', settings.height);
+    if (settings.width != null) formData.append('max_width', settings.width);
+    if (settings.height != null) formData.append('max_height', settings.height);
   }
 }
 
@@ -717,11 +876,24 @@ function appendResizeSettings(settings, formData) {
  * @param {FormData} formData
  */
 export async function appendSettingsToFormData(formData) {
+  const validation = getCurrentSettingsValidation();
+  if (!validation.processable) {
+    throw new Error(validation.resize.message || 'Fix resize settings before processing.');
+  }
+
   const settings = getSettings();
   appendCompressionSettings(getEffectiveCompressSettings(settings), formData);
   appendBackgroundSettings(settings.background, formData);
   appendResizeSettings(settings.resize, formData);
   await appendWatermarkSettings(formData);
+}
+
+export function getCurrentSettingsValidation() {
+  return resizeValidationState;
+}
+
+export function isCurrentSettingsProcessable() {
+  return resizeValidationState.processable;
 }
 
 export function getCurrentProcessingSnapshot() {

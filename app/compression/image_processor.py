@@ -43,6 +43,19 @@ class ValidationResult:
     image: Optional[Image.Image] = None  # Return the opened image to avoid reopening
 
 
+@dataclass(frozen=True)
+class ResizePlan:
+    mode: str
+    requested_width: Optional[int]
+    requested_height: Optional[int]
+    target_width: int
+    target_height: int
+    active: bool
+    changed: bool
+    upscaled: bool
+    strategy: str = 'fit_within_bounds'
+
+
 class ImageCompressor:
     _FONT_PATH = Path(__file__).parent / 'fonts' / 'Inter-SemiBold.ttf'
     MAX_PIXELS = 40_000_000  # ~8000×5000 — reject to prevent decompression bombs
@@ -805,10 +818,10 @@ class ImageCompressor:
         original_format = img.format
         original_size = len(image_data)
         original_dimensions = img.size
+        resize_plan = self._plan_resize(original_dimensions, max_width, max_height)
 
-        # Resize if dimensions are provided
-        if max_width or max_height:
-            img = self._resize_image(img, max_width, max_height)
+        # Resize if requested before any downstream transforms.
+        img = self._apply_resize_plan(img, resize_plan)
 
         format_warnings: List[str] = []
         background_removed = False
@@ -902,6 +915,15 @@ class ImageCompressor:
             'compression_ratio': compression_ratio,
             'format': resolved_format,
             'original_format': source_format or original_format,
+            'resize': {
+                'mode': resize_plan.mode,
+                'requested_width': resize_plan.requested_width,
+                'requested_height': resize_plan.requested_height,
+                'active': resize_plan.active,
+                'changed': resize_plan.changed,
+                'upscaled': resize_plan.upscaled,
+                'strategy': resize_plan.strategy,
+            },
             'format_warnings': format_warnings,
             'background_removed': background_removed,
             'watermarked': watermark_applied,
@@ -1004,28 +1026,77 @@ class ImageCompressor:
         rotated.format = original_format
         return rotated
 
-    def _resize_image(self, img: Image.Image, max_width: Optional[int], max_height: Optional[int]) -> Image.Image:
-        """Resize image maintaining aspect ratio"""
-        if not max_width and not max_height:
+    def _plan_resize(self, size: Tuple[int, int], max_width: Optional[int],
+                     max_height: Optional[int]) -> ResizePlan:
+        """Build a resize plan that fits within the requested bounds."""
+        width, height = size
+
+        if max_width is None and max_height is None:
+            return ResizePlan(
+                mode='original',
+                requested_width=None,
+                requested_height=None,
+                target_width=width,
+                target_height=height,
+                active=False,
+                changed=False,
+                upscaled=False,
+            )
+
+        if width <= 0 or height <= 0:
+            return ResizePlan(
+                mode='custom',
+                requested_width=max_width,
+                requested_height=max_height,
+                target_width=width,
+                target_height=height,
+                active=True,
+                changed=False,
+                upscaled=False,
+            )
+
+        if max_width is not None and max_height is not None:
+            width_scale = max_width / width
+            height_scale = max_height / height
+            if width_scale <= height_scale:
+                target_width = max_width
+                target_height = max(1, round(height * width_scale))
+            else:
+                target_height = max_height
+                target_width = max(1, round(width * height_scale))
+        elif max_width is not None:
+            scale = max_width / width
+            target_width = max_width
+            target_height = max(1, round(height * scale))
+        else:
+            scale = max_height / height
+            target_height = max_height
+            target_width = max(1, round(width * scale))
+
+        changed = (target_width, target_height) != (width, height)
+        upscaled = target_width > width or target_height > height
+
+        return ResizePlan(
+            mode='custom',
+            requested_width=max_width,
+            requested_height=max_height,
+            target_width=target_width,
+            target_height=target_height,
+            active=True,
+            changed=changed,
+            upscaled=upscaled,
+        )
+
+    def _apply_resize_plan(self, img: Image.Image, plan: ResizePlan) -> Image.Image:
+        """Apply a previously computed resize plan."""
+        if not plan.active or not plan.changed:
             return img
 
-        width, height = img.size
-        if height == 0:
-            return img
-        aspect_ratio = width / height
+        resize_kwargs = {
+            'size': (plan.target_width, plan.target_height),
+            'resample': Image.Resampling.LANCZOS,
+        }
+        if plan.target_width < img.width or plan.target_height < img.height:
+            resize_kwargs['reducing_gap'] = 3.0
 
-        if max_width and max_height:
-            if width > max_width or height > max_height:
-                if max_width / max_height > aspect_ratio:
-                    max_width = max(1, round(max_height * aspect_ratio))
-                else:
-                    max_height = max(1, round(max_width / aspect_ratio))
-        elif max_width:
-            max_height = max(1, round(max_width / aspect_ratio))
-        else:  # max_height only
-            max_width = max(1, round(max_height * aspect_ratio))
-
-        if max_width < width or max_height < height:
-            img = img.resize((max_width, max_height), Image.Resampling.LANCZOS)
-
-        return img
+        return img.resize(**resize_kwargs)

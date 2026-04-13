@@ -9,7 +9,7 @@ Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**, **HEIC/HEIF**
 - **Three compression modes**: Lossless (preserves format and quality; HEIC converts to PNG), Balanced (web-optimized), Maximum (smallest files)
 - **Output format selection**: Auto, PNG, WebP, or JPEG
 - **Quality slider** (1–100) for fine-grained control in Balanced and Maximum modes
-- **Resize** with preset dimensions (Full HD, HD, Web) or custom width/height
+- **Resize** within width/height bounds using presets (4K, Full HD, HD, Web) or custom values
 - **Background removal** with rembg subject isolation and transparent PNG output
 - **Watermark layers** with text, uploaded logo PNGs, and QR codes generated from URLs
 - **Live watermark preview** in the sidebar with per-image preview source selection
@@ -177,7 +177,7 @@ The inline settings panel offers these controls:
 
 **Quality slider** (1–100): Available for Balanced and Maximum modes when output is not PNG. Default resets when changing mode or format.
 
-**Resize**: Original (no resize) or Custom with width/height inputs. Presets available: Full HD (1920x1080), HD (1280x720), Web (800x600). Aspect ratio is maintained.
+**Resize**: Original (no resize) or Custom with width/height bounds. You can set width only, height only, or both. The image fits within the bounds, preserves aspect ratio, and can be enlarged if the source is smaller. Presets available: 4K (3840x2160), Full HD (1920x1080), HD (1280x720), Web (800x600).
 
 **Background**: Remove Background runs rembg subject isolation and forces transparent PNG output. Compression mode and output format controls are locked while it is enabled, but resize and watermark remain available.
 
@@ -429,7 +429,7 @@ Requires a modern browser with ES module and `crypto.randomUUID()` support:
 ### Large images processing slowly
 
 - Images exceeding 40 million total pixels (e.g., 8000x5000) trigger a warning
-- Consider using the resize presets (Full HD, HD, Web) to reduce dimensions before compression
+- Consider using resize presets or custom bounds to shrink or enlarge images before compression
 
 ### Logging
 

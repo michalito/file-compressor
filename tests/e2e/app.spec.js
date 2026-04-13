@@ -44,6 +44,10 @@ async function enableWatermark(page) {
   await page.locator('label[for="watermark-toggle"]').click();
 }
 
+async function enableResize(page) {
+  await page.locator('label[for="resize-toggle"]').click();
+}
+
 async function openWatermarkTab(page, layer) {
   await page.locator(`#watermark-tab-${layer}`).click();
 }
@@ -61,6 +65,15 @@ function mockProcessResponse({
   watermarked = false,
   watermarkLayers = [],
   backgroundRemoved = false,
+  resize = {
+    mode: 'original',
+    requested_width: null,
+    requested_height: null,
+    active: false,
+    changed: false,
+    upscaled: false,
+    strategy: 'fit_within_bounds',
+  },
 } = {}) {
   return {
     status: 200,
@@ -77,6 +90,7 @@ function mockProcessResponse({
         compression_ratio: 100,
         format,
         original_format: 'PNG',
+        resize,
         background_removed: backgroundRemoved,
         watermarked,
         watermark_layers: watermarkLayers,
@@ -550,7 +564,7 @@ test('unsupported browser preview formats show a fallback message', async ({ pag
   }]);
 
   await expect(page.locator('#watermark-preview-state')).toContainText(
-    'This image format cannot be previewed in your browser. Processing still works on the server.'
+    'This format can\'t render in your browser.'
   );
 });
 
@@ -579,19 +593,19 @@ test('legacy shared watermark settings migrate into per-layer tabs', async ({ pa
   await expect(page.locator('#watermark-text')).toHaveValue('Legacy');
   await expect(page.locator('#watermark-tab-text-status')).toHaveText('Ready');
 
-  await expect(page.locator('#watermark-text-position-control [data-value="top-left"]')).toHaveClass(/is-active/);
+  await expect(page.locator('#watermark-text-position-control [data-value="top-left"]')).toHaveClass(/is-selected/);
   await expect(page.locator('#watermark-text-opacity-slider')).toHaveValue('65');
   await expect(page.locator('#watermark-text-size-slider')).toHaveValue('9');
   await expect(page.locator('#watermark-text-angle-slider')).toHaveValue('20');
 
   await openWatermarkTab(page, 'logo');
-  await expect(page.locator('#watermark-logo-position-control [data-value="top-left"]')).toHaveClass(/is-active/);
+  await expect(page.locator('#watermark-logo-position-control [data-value="top-left"]')).toHaveClass(/is-selected/);
   await expect(page.locator('#watermark-logo-opacity-slider')).toHaveValue('65');
   await expect(page.locator('#watermark-logo-size-slider')).toHaveValue('9');
   await expect(page.locator('#watermark-logo-angle-slider')).toHaveValue('20');
 
   await openWatermarkTab(page, 'qr');
-  await expect(page.locator('#watermark-qr-position-control [data-value="top-left"]')).toHaveClass(/is-active/);
+  await expect(page.locator('#watermark-qr-position-control [data-value="top-left"]')).toHaveClass(/is-selected/);
   await expect(page.locator('#watermark-qr-opacity-slider')).toHaveValue('65');
   await expect(page.locator('#watermark-qr-size-slider')).toHaveValue('9');
   await expect(page.locator('#watermark-qr-angle-slider')).toHaveValue('20');
@@ -708,7 +722,7 @@ test('legacy sidebar preference migrates to the new key on desktop load', async 
 test('preset aspect ratio persists when a resize field is cleared and refilled', async ({ page }) => {
   await login(page);
 
-  await page.locator('#resize-toggle').click();
+  await enableResize(page);
   await page.getByRole('button', { name: 'Full HD' }).click();
 
   const widthInput = page.locator('#custom-width');
@@ -722,6 +736,126 @@ test('preset aspect ratio persists when a resize field is cleared and refilled',
   await heightInput.fill('');
   await heightInput.type('500');
   await expect(widthInput).toHaveValue('889');
+});
+
+test('4K preset populates resize bounds and keeps aspect ratio locked', async ({ page }) => {
+  await login(page);
+
+  await enableResize(page);
+  await page.getByRole('button', { name: '4K' }).click();
+
+  await expect(page.locator('#custom-width')).toHaveValue('3840');
+  await expect(page.locator('#custom-height')).toHaveValue('2160');
+  await expect(page.locator('#aspect-ratio-toggle')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('resize presets upscale smaller images within bounds and show the correct badge', async ({ page }) => {
+  await login(page);
+
+  await enableResize(page);
+  await page.getByRole('button', { name: 'Full HD' }).click();
+  await uploadFiles(page, makeFiles(1, 'upscale'));
+  await waitForDoneCount(page, 1);
+
+  await expect(page.locator('.tile__final-dimensions')).toHaveText('1440 x 1080');
+  await expect(page.locator('.tile__status-badges')).toContainText('Upscaled');
+});
+
+test('resize summary reflects width-only and height-only bounds', async ({ page }) => {
+  await login(page);
+
+  await enableResize(page);
+  const widthInput = page.locator('#custom-width');
+  const heightInput = page.locator('#custom-height');
+
+  await widthInput.fill('1200');
+  await expect(page.locator('#settings-summary')).toContainText('Fit width 1200px');
+
+  await widthInput.fill('');
+  await heightInput.fill('900');
+  await expect(page.locator('#settings-summary')).toContainText('Fit height 900px');
+});
+
+test('clicking static setting rows toggles them without using the switch', async ({ page }) => {
+  await login(page);
+
+  const resizeTitle = page.locator('[data-section="resize"] .sidebar__section-title');
+  await resizeTitle.click();
+  await expect(page.locator('#resize-toggle')).toBeChecked();
+  await expect(page.locator('#custom-size-section')).toHaveAttribute('aria-hidden', 'false');
+  await resizeTitle.click();
+  await expect(page.locator('#resize-toggle')).not.toBeChecked();
+  await expect(page.locator('#custom-size-section')).toHaveAttribute('aria-hidden', 'true');
+
+  const backgroundTitle = page.locator('[data-section="background"] .sidebar__section-title');
+  await backgroundTitle.click();
+  await expect(page.locator('#background-toggle')).toBeChecked();
+  await backgroundTitle.click();
+  await expect(page.locator('#background-toggle')).not.toBeChecked();
+
+  const watermarkTitle = page.locator('[data-section="watermark"] .sidebar__section-title');
+  await watermarkTitle.click();
+  await expect(page.locator('#watermark-toggle')).toBeChecked();
+  await watermarkTitle.click();
+  await expect(page.locator('#watermark-toggle')).not.toBeChecked();
+});
+
+test('invalid resize input blocks auto-processing until fixed', async ({ page }) => {
+  let processRequests = 0;
+  await page.route('**/process', async (route) => {
+    processRequests += 1;
+    await route.continue();
+  });
+
+  await login(page);
+  await enableResize(page);
+  await page.locator('#custom-width').fill('400.5');
+
+  await expect(page.locator('#resize-error')).toContainText('whole-number width');
+
+  await uploadFiles(page, makeFiles(1, 'invalid-resize'));
+  await expect(page.locator('.tile')).toHaveCount(1);
+  await expect.poll(() => processRequests).toBe(0);
+  await expect(page.locator('.toast--warning').filter({
+    hasText: 'whole-number width',
+  })).toHaveCount(1);
+
+  await page.locator('#custom-width').fill('400');
+  await waitForDoneCount(page, 1);
+  await expect.poll(() => processRequests).toBe(1);
+});
+
+test('toggle off and on restores the last valid custom resize and lock state', async ({ page }) => {
+  await login(page);
+
+  await enableResize(page);
+  await page.getByRole('button', { name: 'Full HD' }).click();
+  await expect(page.locator('#aspect-ratio-toggle')).toHaveAttribute('aria-pressed', 'true');
+
+  await page.locator('label[for="resize-toggle"]').click();
+  await page.locator('label[for="resize-toggle"]').click();
+
+  await expect(page.locator('#custom-width')).toHaveValue('1920');
+  await expect(page.locator('#custom-height')).toHaveValue('1080');
+  await expect(page.locator('#aspect-ratio-toggle')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('reload restores explicit resize lock state instead of inferring it from dimensions', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('compressify_settings', JSON.stringify({
+      compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
+      resize: { mode: 'custom', width: 1200, height: 800, locked: false },
+      background: { enabled: false },
+      watermark: { enabled: false },
+    }));
+  });
+
+  await login(page);
+
+  await expect(page.locator('#resize-toggle')).toBeChecked();
+  await expect(page.locator('#custom-width')).toHaveValue('1200');
+  await expect(page.locator('#custom-height')).toHaveValue('800');
+  await expect(page.locator('#aspect-ratio-toggle')).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('desktop overflow scroll stays inside the content column when the sidebar is open', async ({ page }) => {

@@ -275,11 +275,9 @@ async function processImage(fileId, tile, skipGlobalProgress = false, signal) {
       badges.appendChild(createBadge(`\u2192 ${outFmt}`, 'info'));
     }
 
-    const origDims = result.metadata.original_dimensions;
-    const finalDims = result.metadata.final_dimensions;
-    if (origDims && finalDims &&
-        (origDims[0] !== finalDims[0] || origDims[1] !== finalDims[1])) {
-      badges.appendChild(createBadge('Resized', 'info'));
+    const resizeMeta = result.metadata.resize;
+    if (resizeMeta?.changed) {
+      badges.appendChild(createBadge(resizeMeta.upscaled ? 'Upscaled' : 'Resized', 'info'));
     }
 
     if (result.metadata.watermarked) {

@@ -108,18 +108,24 @@
 
             <!-- Compression -->
             <div class="sidebar__section is-open" data-section="compression">
-                <button type="button" class="sidebar__section-header" aria-expanded="true" aria-controls="section-compression">
-                    <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-zap"/></svg>
-                    <span class="sidebar__section-title">Compression</span>
-                    <svg class="icon sidebar__section-chevron" width="14" height="14" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
-                </button>
+                <div class="sidebar__section-header-shell">
+                    <button type="button" class="sidebar__section-header" aria-expanded="true" aria-controls="section-compression" data-accordion-trigger>
+                        <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-zap"/></svg>
+                        <span class="sidebar__section-title">Compression</span>
+                        <svg class="icon sidebar__section-chevron" width="14" height="14" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
+                    </button>
+                    <button type="button" class="sidebar__tooltip-trigger sidebar__tooltip-trigger--section" id="compression-help"
+                            aria-label="Choose between lossless, balanced, or maximum compression. Background removal forces lossless PNG output."
+                            data-tooltip="Choose between lossless, balanced, or maximum compression. Background removal forces lossless PNG output.">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                    </button>
+                </div>
                 <div class="sidebar__section-body" id="section-compression">
                     <div class="segmented-control segmented-control--tabs" role="radiogroup" aria-label="Compression mode" id="compression-mode-control">
                         <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="lossless">Lossless</button>
                         <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="web">Balanced</button>
                         <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="high">Maximum</button>
                     </div>
-                    <p class="sidebar__hint" id="compression-hint">Highest quality, preserves original format (HEIC outputs as PNG)</p>
 
                     <div class="quality-slider sidebar__sub-divider is-hidden" id="quality-slider-group">
                         <div class="quality-slider__header">
@@ -147,9 +153,14 @@
 
             <!-- Resize -->
             <div class="sidebar__section" data-section="resize">
-                <div class="sidebar__section-header sidebar__section-header--static">
+                <div class="sidebar__section-header sidebar__section-header--static sidebar__section-header--toggleable" data-toggle-checkbox="resize-toggle">
                     <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-maximize"/></svg>
                     <span class="sidebar__section-title">Resize</span>
+                    <button type="button" class="sidebar__tooltip-trigger" id="resize-help"
+                            aria-label="Fits within the bounds you set. Aspect ratio is preserved. Smaller images can be enlarged."
+                            data-tooltip="Fits within the bounds you set. Aspect ratio is preserved. Smaller images can be enlarged.">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                    </button>
                     <label class="sidebar__toggle" for="resize-toggle">
                         <input type="checkbox" id="resize-toggle" class="sidebar__toggle-input sr-only">
                         <span class="sidebar__toggle-switch" aria-hidden="true"></span>
@@ -161,8 +172,9 @@
                     <div class="resize-custom-reveal__body">
                         <div class="dimensions-group">
                             <div class="dimensions-group__inputs">
-                                <input type="number" class="dimensions-group__input" id="custom-width"
-                                       min="1" max="10000" placeholder="Width" aria-label="Width in pixels">
+                                <input type="text" class="dimensions-group__input" id="custom-width"
+                                       inputmode="numeric" placeholder="Width" aria-label="Width in pixels"
+                                       aria-describedby="resize-error" autocomplete="off" spellcheck="false">
 
                                 <button type="button" class="dimensions-group__lock" id="aspect-ratio-toggle"
                                         aria-label="Lock aspect ratio" aria-pressed="false" title="Lock aspect ratio">
@@ -170,14 +182,20 @@
                                     <svg class="icon dimensions-group__lock-icon dimensions-group__lock-icon--unlocked" width="14" height="14" aria-hidden="true"><use href="#icon-unlock"/></svg>
                                 </button>
 
-                                <input type="number" class="dimensions-group__input" id="custom-height"
-                                       min="1" max="10000" placeholder="Height" aria-label="Height in pixels">
+                                <input type="text" class="dimensions-group__input" id="custom-height"
+                                       inputmode="numeric" placeholder="Height" aria-label="Height in pixels"
+                                       aria-describedby="resize-error" autocomplete="off" spellcheck="false">
 
                                 <span class="dimensions-group__unit" aria-hidden="true">px</span>
                             </div>
                         </div>
+                        <p class="sidebar__hint sidebar__hint--below sidebar__hint--warning is-hidden" id="resize-error" role="alert"></p>
 
                         <div class="preset-buttons" role="group" aria-label="Size presets">
+                            <button type="button" class="preset-btn" data-width="3840" data-height="2160">
+                                <span class="preset-btn__name">4K</span>
+                                <span class="preset-btn__res">3840 &times; 2160</span>
+                            </button>
                             <button type="button" class="preset-btn" data-width="1920" data-height="1080">
                                 <span class="preset-btn__name">Full HD</span>
                                 <span class="preset-btn__res">1920 &times; 1080</span>
@@ -197,23 +215,32 @@
 
             <!-- Background -->
             <div class="sidebar__section" data-section="background">
-                <div class="sidebar__section-header sidebar__section-header--static">
+                <div class="sidebar__section-header sidebar__section-header--static sidebar__section-header--toggleable" data-toggle-checkbox="background-toggle">
                     <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-image"/></svg>
                     <span class="sidebar__section-title">Background Removal</span>
+                    <button type="button" class="sidebar__tooltip-trigger" id="background-help"
+                            aria-label="Isolates the main subject and outputs a transparent PNG. Compression mode and format lock while enabled."
+                            data-tooltip="Isolates the main subject and outputs a transparent PNG. Compression mode and format lock while enabled.">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                    </button>
                     <label class="sidebar__toggle" for="background-toggle">
                         <input type="checkbox" id="background-toggle" class="sidebar__toggle-input sr-only">
                         <span class="sidebar__toggle-switch" aria-hidden="true"></span>
                         <span class="sr-only">Enable background removal</span>
                     </label>
                 </div>
-                <p class="sidebar__hint sidebar__hint--below is-hidden" id="background-hint">Subject isolation with rembg. Outputs a transparent PNG.</p>
             </div>
 
             <!-- Watermark -->
             <div class="sidebar__section" data-section="watermark">
-                <div class="sidebar__section-header sidebar__section-header--static">
+                <div class="sidebar__section-header sidebar__section-header--static sidebar__section-header--toggleable" data-toggle-checkbox="watermark-toggle">
                     <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-type"/></svg>
                     <span class="sidebar__section-title">Watermark</span>
+                    <button type="button" class="sidebar__tooltip-trigger" id="watermark-help"
+                            aria-label="Stack text, logo, and QR layers with independent transforms. The preview uses the selected image tile."
+                            data-tooltip="Stack text, logo, and QR layers with independent transforms. The preview uses the selected image tile.">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                    </button>
                     <label class="sidebar__toggle" for="watermark-toggle">
                         <input type="checkbox" id="watermark-toggle" class="sidebar__toggle-input sr-only">
                         <span class="sidebar__toggle-switch" aria-hidden="true"></span>
@@ -299,7 +326,7 @@
                             <input type="url" class="watermark-text__input" id="watermark-qr-url"
                                    placeholder="https://example.com" maxlength="2048"
                                    aria-label="QR watermark URL">
-                            <button type="button" class="watermark-layer__info watermark-layer__info--field" aria-label="Use an absolute http:// or https:// URL." data-tooltip="Use an absolute http:// or https:// URL." id="watermark-qr-help">
+                            <button type="button" class="sidebar__tooltip-trigger sidebar__tooltip-trigger--field" aria-label="Use an absolute http:// or https:// URL." data-tooltip="Use an absolute http:// or https:// URL." id="watermark-qr-help">
                                 <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
                             </button>
                         </div>

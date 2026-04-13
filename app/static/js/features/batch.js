@@ -9,7 +9,11 @@ import { processTile } from './image-tile.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 import { showConfirm } from '../components/confirm.js';
-import { getCurrentProcessingSnapshot } from './settings.js';
+import {
+  getCurrentProcessingSnapshot,
+  getCurrentSettingsValidation,
+  isCurrentSettingsProcessable,
+} from './settings.js';
 
 const CHUNK_SIZE = 5;
 const RETRYABLE_STATUSES = new Set(['pending', 'error', 'cancelled']);
@@ -115,9 +119,21 @@ export function initBatch() {
   bus.on('settings:changed', () => {
     updateReprocessVisibility();
   });
+
+  bus.on('settings:validationChanged', ({ processable }) => {
+    updateReprocessVisibility();
+    if (processable) {
+      enqueuePendingFiles();
+    }
+  });
 }
 
 function enqueueForProcessing(fileIds) {
+  if (!isCurrentSettingsProcessable()) {
+    showResizeValidationToast();
+    return;
+  }
+
   const newlyQueued = [];
 
   for (const fileId of fileIds) {
@@ -139,6 +155,26 @@ function enqueueForProcessing(fileIds) {
   }
 
   void drainQueue();
+}
+
+function enqueuePendingFiles() {
+  const pendingIds = [...state.files.entries()]
+    .filter(([fileId, entry]) => entry.status === 'pending' && !queuedIds.has(fileId))
+    .map(([fileId]) => fileId);
+
+  if (pendingIds.length === 0) return;
+  enqueueForProcessing(pendingIds);
+}
+
+function showResizeValidationToast() {
+  const validation = getCurrentSettingsValidation();
+  if (validation.processable) return;
+
+  showToast({
+    message: validation.resize.message || 'Fix resize settings before processing files.',
+    type: 'warning',
+    duration: 5000,
+  });
 }
 
 function removeQueuedFile(fileId) {
@@ -480,12 +516,19 @@ function updateReprocessVisibility() {
     if (entry.status !== 'done' || !entry.processedWithSettings) return false;
     return JSON.stringify(entry.processedWithSettings) !== currentSettings;
   });
+  const processable = isCurrentSettingsProcessable();
 
   btn.classList.toggle('is-hidden', !needsReprocess);
+  btn.disabled = !processable;
+  btn.title = !processable ? 'Fix resize settings before reprocessing.' : '';
 }
 
 async function retryIncomplete() {
   if (processing) return;
+  if (!isCurrentSettingsProcessable()) {
+    showResizeValidationToast();
+    return;
+  }
 
   const incompleteIds = [...state.files.entries()]
     .filter(([, entry]) => entry.status === 'error' || entry.status === 'cancelled')
@@ -503,6 +546,10 @@ async function retryIncomplete() {
 
 async function reprocessAll() {
   if (processing) return;
+  if (!isCurrentSettingsProcessable()) {
+    showResizeValidationToast();
+    return;
+  }
 
   const currentSettings = JSON.stringify(getCurrentProcessingSnapshot());
   const doneIds = [...state.files.entries()]

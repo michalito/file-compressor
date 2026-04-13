@@ -19,7 +19,7 @@ const defaultWatermarkLayer = {
 
 const defaultSettings = {
   compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
-  resize: { mode: 'original', width: null, height: null },
+  resize: { mode: 'original', width: null, height: null, locked: false },
   background: { enabled: false },
   watermark: {
     enabled: false,
@@ -94,6 +94,19 @@ function getLegacyWatermarkTransform(savedWatermark = {}) {
     angle: savedWatermark.angle ?? defaultWatermarkLayer.angle,
     tileDensity: savedWatermark.tileDensity ?? defaultWatermarkLayer.tileDensity,
   };
+}
+
+function migrateResizeSettings(savedResize = {}) {
+  const resize = {
+    ...defaultSettings.resize,
+    ...(savedResize || {}),
+  };
+
+  if (typeof savedResize?.locked !== 'boolean') {
+    resize.locked = Boolean(savedResize?.width && savedResize?.height);
+  }
+
+  return resize;
 }
 
 function migrateWatermarkSettings(savedWatermark = {}) {
@@ -276,7 +289,7 @@ function createState() {
       ...defaultState.settings,
       ...savedSettings,
       compress: { ...defaultState.settings.compress, ...(savedSettings.compress || {}) },
-      resize: { ...defaultState.settings.resize, ...(savedSettings.resize || {}) },
+      resize: migrateResizeSettings(savedSettings.resize || {}),
       background: { ...defaultState.settings.background, ...(savedSettings.background || {}) },
       watermark: migrateWatermarkSettings(savedSettings.watermark || {}),
     };
@@ -314,7 +327,11 @@ export function getProcessingSnapshot() {
 
   return {
     compress: { ...state.settings.compress },
-    resize: { ...state.settings.resize },
+    resize: {
+      mode: state.settings.resize.mode,
+      width: state.settings.resize.width,
+      height: state.settings.resize.height,
+    },
     background: { ...state.settings.background },
     watermark: {
       enabled: watermark.enabled,
