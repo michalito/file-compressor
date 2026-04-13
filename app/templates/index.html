@@ -205,23 +205,17 @@
                 <div class="watermark-body is-hidden" id="watermark-body">
                     <div class="watermark-preview-card">
                         <div class="watermark-preview-card__header">
-                            <div>
-                                <span class="watermark-options__label">Live Preview</span>
-                                <p class="sidebar__hint watermark-preview-card__hint">
-                                    Preview source:
-                                    <span id="watermark-preview-source-name">No image selected</span>
-                                </p>
-                            </div>
-                            <span class="watermark-preview-card__badge">Client-side</span>
+                            <svg class="icon watermark-preview-card__icon" width="14" height="14" aria-hidden="true"><use href="#icon-eye"/></svg>
+                            <span class="watermark-preview-card__label">Preview</span>
+                            <span class="watermark-preview-card__source" id="watermark-preview-source-name"></span>
                         </div>
-                        <div class="watermark-preview-card__canvas-wrap">
+                        <div class="watermark-preview-card__viewport" id="watermark-preview-viewport">
                             <canvas id="watermark-preview-canvas" width="640" height="400" aria-hidden="true"></canvas>
-                            <div class="watermark-preview-card__state" id="watermark-preview-state" data-state="empty" role="status" aria-live="polite">
-                                Upload an image to preview watermark placement.
-                            </div>
+                            <div class="watermark-preview-card__state" id="watermark-preview-state" data-state="empty" role="status" aria-live="polite"></div>
                         </div>
-                        <p class="sidebar__hint sidebar__hint--below">
-                            Preview shows watermark placement only; it does not simulate compression artifacts or background removal.
+                        <p class="watermark-preview-card__footer">
+                            <svg class="icon" width="12" height="12" aria-hidden="true"><use href="#icon-info"/></svg>
+                            Placement preview only
                         </p>
                     </div>
 
@@ -231,19 +225,19 @@
                                     aria-selected="true" aria-controls="watermark-panel-text" tabindex="0"
                                     data-layer="text">
                                 <span class="watermark-tab__label">Text</span>
-                                <span class="watermark-tab__status" id="watermark-tab-text-status" data-tone="off">Off</span>
+                                <span class="watermark-tab__status" id="watermark-tab-text-status" data-tone="off"><span class="sr-only">Off</span></span>
                             </button>
                             <button type="button" class="watermark-tab" id="watermark-tab-logo" role="tab"
                                     aria-selected="false" aria-controls="watermark-panel-logo" tabindex="-1"
                                     data-layer="logo">
                                 <span class="watermark-tab__label">Logo</span>
-                                <span class="watermark-tab__status" id="watermark-tab-logo-status" data-tone="off">Off</span>
+                                <span class="watermark-tab__status" id="watermark-tab-logo-status" data-tone="off"><span class="sr-only">Off</span></span>
                             </button>
                             <button type="button" class="watermark-tab" id="watermark-tab-qr" role="tab"
                                     aria-selected="false" aria-controls="watermark-panel-qr" tabindex="-1"
                                     data-layer="qr">
                                 <span class="watermark-tab__label">QR</span>
-                                <span class="watermark-tab__status" id="watermark-tab-qr-status" data-tone="off">Off</span>
+                                <span class="watermark-tab__status" id="watermark-tab-qr-status" data-tone="off"><span class="sr-only">Off</span></span>
                             </button>
                         </div>
 

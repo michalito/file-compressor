@@ -12,6 +12,13 @@ let renderGeneration = 0;
 let sourceCache = { fileId: null, file: null, image: null };
 const assetImageCache = new Map();
 
+const STATE_CONFIG = {
+  empty:       { icon: 'icon-image',        heading: 'No image yet',        sub: 'Upload a file to see your watermark.' },
+  disabled:    { icon: 'icon-eye-off',       heading: 'Watermark is off',    sub: 'Enable the toggle above to preview.' },
+  inactive:    { icon: 'icon-type',          heading: 'No content added',    sub: 'Add text, a logo, or a QR code.' },
+  unsupported: { icon: 'icon-alert-circle',  heading: 'Preview unavailable', sub: 'This format can\'t render in your browser.' },
+};
+
 export function initWatermarkPreview() {
   const canvas = $('#watermark-preview-canvas');
   if (!canvas) return;
@@ -116,18 +123,50 @@ function syncSelectedTile() {
   });
 }
 
-function setPreviewState(stateKey, message) {
+function setPreviewState(stateKey, _message) {
   const stateEl = $('#watermark-preview-state');
+  const viewportEl = $('#watermark-preview-viewport');
   if (!stateEl) return;
 
   stateEl.dataset.state = stateKey;
-  stateEl.textContent = message || '';
-  stateEl.classList.toggle('is-hidden', !message);
+
+  if (viewportEl) viewportEl.classList.toggle('is-active', stateKey === 'ready');
+
+  const config = STATE_CONFIG[stateKey];
+  if (!config) {
+    stateEl.replaceChildren();
+    stateEl.classList.add('is-hidden');
+    return;
+  }
+
+  const NS = 'http://www.w3.org/2000/svg';
+
+  const iconWrap = document.createElement('span');
+  iconWrap.className = 'watermark-preview-card__state-icon';
+  iconWrap.setAttribute('aria-hidden', 'true');
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('width', '20');
+  svg.setAttribute('height', '20');
+  const use = document.createElementNS(NS, 'use');
+  use.setAttribute('href', '#' + config.icon);
+  svg.appendChild(use);
+  iconWrap.appendChild(svg);
+
+  const heading = document.createElement('span');
+  heading.className = 'watermark-preview-card__state-heading';
+  heading.textContent = config.heading;
+
+  const sub = document.createElement('span');
+  sub.className = 'watermark-preview-card__state-sub';
+  sub.textContent = config.sub;
+
+  stateEl.replaceChildren(iconWrap, heading, sub);
+  stateEl.classList.remove('is-hidden');
 }
 
 function updatePreviewSourceName(name) {
   const el = $('#watermark-preview-source-name');
-  if (el) el.textContent = name || 'No image selected';
+  if (el) el.textContent = name || '';
 }
 
 function loadImageFromUrl(url) {

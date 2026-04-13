@@ -280,8 +280,10 @@ function syncWatermarkLayerStatus(layerKey) {
   const statusEl = $(WATERMARK_LAYER_CONFIG[layerKey].status);
 
   if (statusEl) {
-    statusEl.textContent = status.label;
+    const srSpan = statusEl.querySelector('.sr-only');
+    if (srSpan) srSpan.textContent = status.label;
     statusEl.dataset.tone = status.tone;
+    statusEl.title = status.label;
   }
 
   updateWatermarkLayerMessage(layerKey, status.message);
