@@ -245,8 +245,8 @@
                         <input type="text" class="watermark-text__input" id="watermark-text"
                                placeholder="&copy; Your Name" maxlength="50"
                                aria-label="Watermark text">
-                        <div class="watermark-options__group watermark-options__group--full">
-                            <span class="watermark-options__label">Text Color</span>
+                        <div>
+                            <span class="watermark-label">Text Color</span>
                             <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Watermark text color" id="watermark-text-color-control">
                                 <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="white">White</button>
                                 <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="black">Black</button>
@@ -256,20 +256,34 @@
                         {% endcall %}
 
                         {% call watermark_panel('logo', 'Logo', 'Logo Layer', 'Upload a PNG logo and tune its own transform.', 'Enable logo watermark layer', 'watermark-logo-message') %}
-                        <input type="file" id="watermark-logo-file" class="watermark-file__input" accept="image/png" aria-label="Upload watermark logo PNG">
-                        <div class="watermark-file__meta">
-                            <span class="watermark-file__chip is-hidden" id="watermark-logo-filename"></span>
-                            <button type="button" class="btn btn--ghost btn--sm is-hidden" id="watermark-logo-clear">Remove</button>
+                        <div class="watermark-upload" id="watermark-logo-upload-zone">
+                            <input type="file" id="watermark-logo-file" class="sr-only" accept="image/png" aria-label="Upload watermark logo PNG">
+                            <label class="watermark-upload__dropzone" for="watermark-logo-file" id="watermark-logo-dropzone">
+                                <svg class="icon watermark-upload__icon" width="20" height="20" aria-hidden="true"><use href="#icon-upload"/></svg>
+                                <span class="watermark-upload__text">
+                                    <span class="watermark-upload__cta">Choose PNG</span>
+                                    <span class="watermark-upload__hint">or drag and drop</span>
+                                </span>
+                            </label>
+                            <div class="watermark-upload__file is-hidden" id="watermark-logo-file-display">
+                                <svg class="icon watermark-upload__file-icon" width="14" height="14" aria-hidden="true"><use href="#icon-image"/></svg>
+                                <span class="watermark-upload__file-name truncate" id="watermark-logo-filename"></span>
+                                <button type="button" class="watermark-upload__file-remove" id="watermark-logo-clear" aria-label="Remove logo file" title="Remove">
+                                    <svg class="icon" width="12" height="12" aria-hidden="true"><use href="#icon-x"/></svg>
+                                </button>
+                            </div>
                         </div>
                         {% endcall %}
 
                         {% call watermark_panel('qr', 'QR', 'QR Layer', 'Generate and place a QR stamp independently.', 'Enable QR watermark layer', 'watermark-qr-error') %}
-                        <input type="url" class="watermark-text__input" id="watermark-qr-url"
-                               placeholder="https://example.com" maxlength="2048"
-                               aria-label="QR watermark URL">
-                        <p class="sidebar__hint watermark-layer__hint" id="watermark-qr-help">
-                            Use an absolute <code>http://</code> or <code>https://</code> URL.
-                        </p>
+                        <div class="watermark-qr__field">
+                            <input type="url" class="watermark-text__input" id="watermark-qr-url"
+                                   placeholder="https://example.com" maxlength="2048"
+                                   aria-label="QR watermark URL">
+                            <button type="button" class="watermark-layer__info watermark-layer__info--field" aria-label="Use an absolute http:// or https:// URL." data-tooltip="Use an absolute http:// or https:// URL." id="watermark-qr-help">
+                                <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                            </button>
+                        </div>
                         {% endcall %}
                     </div>
                 </div>

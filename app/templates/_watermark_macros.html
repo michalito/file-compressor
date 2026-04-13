@@ -1,36 +1,49 @@
-{% macro watermark_position_control(layer_key, layer_label, active_position='bottom-right') -%}
-<div class="watermark-options__group watermark-options__group--full">
-    <span class="watermark-options__label">Position</span>
-    <div class="segmented-control segmented-control--sm segmented-control--wrap"
+{% macro watermark_position_grid(layer_key, layer_label, active_position='bottom-right') -%}
+<div class="watermark-position" id="watermark-{{ layer_key }}-position-control">
+    <span class="watermark-label">Position</span>
+    <div class="watermark-position__grid"
          role="radiogroup"
-         aria-label="{{ layer_label }} watermark position"
-         id="watermark-{{ layer_key }}-position-control">
-        {% for value, short_label, title in [
-            ('top-left', 'TL', 'Top Left'),
-            ('top-right', 'TR', 'Top Right'),
-            ('bottom-right', 'BR', 'Bottom Right'),
-            ('bottom-left', 'BL', 'Bottom Left'),
-            ('center', 'Center', 'Center'),
-            ('tiled', 'Tiled', 'Tiled'),
+         aria-label="{{ layer_label }} watermark position">
+        {% for value, title in [
+            ('top-left', 'Top Left'),
+            (none, none),
+            ('top-right', 'Top Right'),
+            (none, none),
+            ('center', 'Center'),
+            (none, none),
+            ('bottom-left', 'Bottom Left'),
+            (none, none),
+            ('bottom-right', 'Bottom Right'),
         ] %}
+        {% if value %}
         <button type="button"
-                class="segmented-control__item{% if value == active_position %} is-active{% endif %}"
+                class="watermark-position__cell watermark-position__cell--active{% if value == active_position %} is-selected{% endif %}"
                 role="radio"
                 aria-checked="{{ 'true' if value == active_position else 'false' }}"
                 data-value="{{ value }}"
-                title="{{ title }}"
-                {% if value == 'tiled' %}id="watermark-{{ layer_key }}-position-tiled"{% endif %}>
-            {{ short_label }}
+                title="{{ title }}">
+            <span class="watermark-position__dot"></span>
         </button>
+        {% else %}
+        <span class="watermark-position__cell watermark-position__cell--inert" aria-hidden="true"></span>
+        {% endif %}
         {% endfor %}
+        <button type="button"
+                class="watermark-position__cell watermark-position__cell--active watermark-position__cell--tiled{% if 'tiled' == active_position %} is-selected{% endif %}"
+                role="radio"
+                aria-checked="{{ 'true' if 'tiled' == active_position else 'false' }}"
+                data-value="tiled"
+                id="watermark-{{ layer_key }}-position-tiled">
+            <svg class="icon" width="12" height="12" aria-hidden="true"><use href="#icon-layers"/></svg>
+            <span class="watermark-position__cell-label">Tiled</span>
+        </button>
     </div>
 </div>
 {%- endmacro %}
 
-{% macro watermark_slider(layer_key, field_key, label, value, min_value, max_value, start_label, end_label, step=None, hidden=False, middle_label=None) -%}
-<div class="watermark-options__group watermark-options__group--full{% if hidden %} is-hidden{% endif %}"
-     {% if hidden %}id="watermark-{{ layer_key }}-{{ field_key }}-group"{% endif %}>
-    <div class="quality-slider">
+{% macro watermark_slider(layer_key, field_key, label, value, min_value, max_value, start_label='', end_label='', step=None, hidden=False, middle_label=None, compact=False) -%}
+<div {% if hidden %}class="is-hidden" id="watermark-{{ layer_key }}-{{ field_key }}-group"{% endif %}>
+    <div class="quality-slider{% if compact %} quality-slider--compact{% endif %}">
         <div class="quality-slider__header">
             <label class="quality-slider__label" for="watermark-{{ layer_key }}-{{ field_key }}-slider">{{ label }}</label>
             <output class="quality-slider__value"
@@ -44,11 +57,13 @@
                max="{{ max_value }}"
                {% if step is not none %}step="{{ step }}"{% endif %}
                value="{{ value|replace('%', '')|replace('&deg;', '') }}">
+        {% if not compact and (start_label or end_label) %}
         <div class="quality-slider__range-labels">
             <span>{{ start_label|safe }}</span>
             {% if middle_label is not none %}<span>{{ middle_label|safe }}</span>{% endif %}
             <span>{{ end_label|safe }}</span>
         </div>
+        {% endif %}
     </div>
 </div>
 {%- endmacro %}
@@ -63,9 +78,11 @@
          data-layer="{{ layer_key }}">
     <div class="watermark-layer">
         <div class="watermark-layer__header">
-            <div>
+            <div class="watermark-layer__title-row">
                 <h3 class="watermark-layer__title">{{ title }}</h3>
-                <p class="sidebar__hint watermark-layer__hint">{{ hint }}</p>
+                <button type="button" class="watermark-layer__info" aria-label="{{ hint }}" data-tooltip="{{ hint }}">
+                    <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                </button>
             </div>
             <label class="sidebar__toggle" for="watermark-{{ layer_key }}-toggle">
                 <input type="checkbox" id="watermark-{{ layer_key }}-toggle" class="sidebar__toggle-input sr-only">
@@ -74,12 +91,19 @@
             </label>
         </div>
 
-        {{ caller() }}
-        {{ watermark_position_control(layer_key, layer_label) }}
-        {{ watermark_slider(layer_key, 'opacity', 'Opacity', '50%', 10, 100, 'Subtle', 'Opaque', step=5) }}
-        {{ watermark_slider(layer_key, 'size', 'Size', '5', 1, 20, 'Subtle', 'Bold') }}
-        {{ watermark_slider(layer_key, 'density', 'Tile Density', '5', 1, 10, 'Sparse', 'Dense', hidden=True) }}
-        {{ watermark_slider(layer_key, 'angle', 'Angle', '0&deg;', -180, 180, '-180&deg;', '180&deg;', step=5, middle_label='0&deg;') }}
+        <div class="watermark-layer__section">
+            <span class="watermark-layer__section-label">Content</span>
+            {{ caller() }}
+        </div>
+
+        <div class="watermark-layer__section">
+            <span class="watermark-layer__section-label">Transform</span>
+            {{ watermark_position_grid(layer_key, layer_label) }}
+            {{ watermark_slider(layer_key, 'opacity', 'Opacity', '50%', 10, 100, compact=True, step=5) }}
+            {{ watermark_slider(layer_key, 'size', 'Size', '5', 1, 20, compact=True) }}
+            {{ watermark_slider(layer_key, 'density', 'Tile Density', '5', 1, 10, 'Sparse', 'Dense', hidden=True) }}
+            {{ watermark_slider(layer_key, 'angle', 'Angle', '0&deg;', -180, 180, '-180&deg;', '180&deg;', step=5, middle_label='0&deg;') }}
+        </div>
 
         <p class="sidebar__hint sidebar__hint--warning watermark-layer__error is-hidden" id="{{ error_id }}"></p>
     </div>

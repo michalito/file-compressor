@@ -24,6 +24,98 @@ import {
 const MAX_WATERMARK_LOGO_SIZE = 5 * 1024 * 1024;
 const SLIDER_COMMIT_DELAY_MS = 80;
 
+/* ── Position Grid helpers ──────────────────────────────────── */
+
+function initPositionGrid(container, onChange) {
+  const cells = [...container.querySelectorAll('.watermark-position__cell--active')];
+
+  function selectPosition(value) {
+    cells.forEach(btn => {
+      const match = btn.dataset.value === value;
+      btn.classList.toggle('is-selected', match);
+      btn.setAttribute('aria-checked', String(match));
+    });
+    onChange(value);
+  }
+
+  cells.forEach(btn => {
+    btn.addEventListener('click', () => selectPosition(btn.dataset.value));
+  });
+
+  // Arrow-key navigation cycles through all 6 position options
+  cells.forEach((btn, idx) => {
+    btn.addEventListener('keydown', (event) => {
+      let next = null;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        next = cells[(idx + 1) % cells.length];
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        next = cells[(idx - 1 + cells.length) % cells.length];
+      }
+      if (!next) return;
+      event.preventDefault();
+      next.focus();
+      next.click();
+    });
+  });
+}
+
+function setPositionGridValue(selector, value) {
+  const container = $(selector);
+  if (!container) return;
+
+  container.querySelectorAll('.watermark-position__cell--active').forEach(btn => {
+    const match = btn.dataset.value === value;
+    btn.classList.toggle('is-selected', match);
+    btn.setAttribute('aria-checked', String(match));
+  });
+}
+
+/* ── Logo Drop Zone ─────────────────────────────────────────── */
+
+function initLogoDropZone() {
+  const dropzone = $('#watermark-logo-dropzone');
+  const fileInput = $('#watermark-logo-file');
+  if (!dropzone || !fileInput) return;
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add('is-dragover');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('is-dragover');
+    });
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'image/png') {
+      showToast({ message: 'Watermark logo must be a PNG image.', type: 'warning' });
+      return;
+    }
+
+    if (file.size > MAX_WATERMARK_LOGO_SIZE) {
+      showToast({ message: 'Watermark logo must be 5 MB or smaller.', type: 'warning' });
+      return;
+    }
+
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+/* ── Config ─────────────────────────────────────────────────── */
+
 const WATERMARK_LAYER_CONFIG = {
   text: {
     tab: '#watermark-tab-text',
@@ -231,15 +323,16 @@ export async function ensureWatermarkQrAsset() {
 
 function syncWatermarkLogoMeta() {
   const chip = $('#watermark-logo-filename');
-  const clearBtn = $('#watermark-logo-clear');
+  const dropzone = $('#watermark-logo-dropzone');
+  const fileDisplay = $('#watermark-logo-file-display');
   const asset = state.runtime.watermarkLogo;
 
   if (chip) {
     chip.textContent = asset ? asset.name : '';
-    chip.classList.toggle('is-hidden', !asset);
   }
 
-  if (clearBtn) clearBtn.classList.toggle('is-hidden', !asset);
+  if (dropzone) dropzone.classList.toggle('is-hidden', Boolean(asset));
+  if (fileDisplay) fileDisplay.classList.toggle('is-hidden', !asset);
 }
 
 function syncWatermarkLayerTransforms(layerKey) {
@@ -251,7 +344,7 @@ function syncWatermarkLayerTransforms(layerKey) {
   const tileDensity = layer.tileDensity ?? 5;
   const angle = layer.angle ?? 0;
 
-  setSegmentedValue(config.positionControl, position);
+  setPositionGridValue(config.positionControl, position);
   toggleHidden(config.densityGroup, position !== 'tiled');
 
   const opacitySlider = $(config.opacitySlider);
@@ -351,7 +444,7 @@ function bindWatermarkLayerTransformControls(layerKey) {
 
   const positionControl = $(config.positionControl);
   if (positionControl) {
-    initSegmentedControl(positionControl, (value) => {
+    initPositionGrid(positionControl, (value) => {
       updateSettings('watermark', { [layerKey]: { position: value } });
       toggleHidden(config.densityGroup, value !== 'tiled');
     });
@@ -432,6 +525,7 @@ export function initWatermarkEditor() {
   if (!toggle) return;
 
   initWatermarkTabs();
+  initLogoDropZone();
   WATERMARK_LAYER_KEYS.forEach(bindWatermarkLayerTransformControls);
   bindWatermarkBusListeners();
 
