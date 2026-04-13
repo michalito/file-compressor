@@ -705,21 +705,23 @@ test('legacy sidebar preference migrates to the new key on desktop load', async 
     .toBe(false);
 });
 
-test('preset aspect ratio unlocks when a resize field is cleared', async ({ page }) => {
+test('preset aspect ratio persists when a resize field is cleared and refilled', async ({ page }) => {
   await login(page);
 
-  await page.locator('#resize-mode-control [data-value="custom"]').click();
+  await page.locator('#resize-toggle').click();
   await page.getByRole('button', { name: 'Full HD' }).click();
 
   const widthInput = page.locator('#custom-width');
   const heightInput = page.locator('#custom-height');
 
+  // Ratio is locked at 16:9 from the Full HD preset
   await widthInput.fill('1000');
   await expect(heightInput).toHaveValue('563');
 
+  // Clearing and retyping height keeps ratio locked — width recalculates
   await heightInput.fill('');
   await heightInput.type('500');
-  await expect(widthInput).toHaveValue('1000');
+  await expect(widthInput).toHaveValue('889');
 });
 
 test('desktop overflow scroll stays inside the content column when the sidebar is open', async ({ page }) => {

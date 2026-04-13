@@ -508,60 +508,211 @@
   display: block;
 }
 
-/* ── Custom Section (resize dimensions) ──────────────────────── */
-.sidebar__custom-section {
-  margin-top: var(--space-3);
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--color-border);
+/* ── Sub-group Divider (visual separator within a section body) ── */
+.sidebar__sub-divider {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
 }
 
-/* ── Dimensions Row ──────────────────────────────────────────── */
-.dimensions-row {
+/* ── Resize Custom Section — animated reveal ────────────────── */
+.resize-custom-reveal {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height var(--transition-slow) ease,
+    opacity var(--transition-base) ease;
+}
+
+.resize-custom-reveal.is-open {
+  max-height: 500px;
+  opacity: 1;
+}
+
+.resize-custom-reveal__body {
+  padding: var(--space-3) var(--space-5) var(--space-4);
+}
+
+/* ── Dimensions Group (recessed container) ──────────────────── */
+.dimensions-group {
+  background: var(--color-background);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+
+/* ── Connected Input Row ────────────────────────────────────── */
+.dimensions-group__inputs {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-}
-
-.dimensions-row__input {
-  width: 80px;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-sm);
-  font-family: inherit;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background-color: var(--color-surface);
-  color: var(--color-text);
-  text-align: center;
+  overflow: hidden;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.dimensions-row__input:focus {
-  outline: none;
+.dimensions-group__inputs:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-subtle);
 }
 
-.dimensions-row__sep {
+.dimensions-group__input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
-  color: var(--color-text-tertiary);
-  font-weight: var(--weight-medium);
+  font-family: inherit;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  text-align: center;
+  -moz-appearance: textfield;
 }
 
-.dimensions-row__label {
+.dimensions-group__input::-webkit-inner-spin-button,
+.dimensions-group__input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.dimensions-group__input:focus {
+  outline: none;
+}
+
+.dimensions-group__input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* ── Aspect Ratio Lock Toggle ───────────────────────────────── */
+.dimensions-group__lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.dimensions-group__lock:hover {
+  color: var(--color-primary);
+  background-color: var(--color-primary-subtle);
+}
+
+.dimensions-group__lock:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Icon visibility — unlocked by default */
+.dimensions-group__lock-icon--locked {
+  display: none;
+}
+
+.dimensions-group__lock-icon--unlocked {
+  display: block;
+}
+
+.dimensions-group__lock[aria-pressed="true"] .dimensions-group__lock-icon--locked {
+  display: block;
+}
+
+.dimensions-group__lock[aria-pressed="true"] .dimensions-group__lock-icon--unlocked {
+  display: none;
+}
+
+.dimensions-group__lock[aria-pressed="true"] {
+  color: var(--color-primary);
+  background-color: var(--color-primary-subtle);
+}
+
+/* ── Unit label ─────────────────────────────────────────────── */
+.dimensions-group__unit {
+  flex-shrink: 0;
+  padding: 0 var(--space-3) 0 0;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+  font-weight: var(--weight-medium);
+  user-select: none;
 }
 
-/* ── Preset Buttons ──────────────────────────────────────────── */
+/* ── Preset Buttons ─────────────────────────────────────────── */
 .preset-buttons {
   display: flex;
   gap: var(--space-2);
-  margin-top: var(--space-2);
-  flex-wrap: wrap;
+  margin-top: var(--space-3);
 }
 
-.preset-buttons .btn {
+.preset-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-2);
+  font-family: inherit;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.preset-btn:hover {
+  background-color: var(--color-primary-subtle);
+  border-color: var(--color-primary);
+}
+
+.preset-btn:hover .preset-btn__name {
+  color: var(--color-primary);
+}
+
+.preset-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.preset-btn__name {
   font-size: var(--text-xs);
-  padding: var(--space-1) var(--space-2);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  line-height: var(--leading-tight);
+  transition: color var(--transition-fast);
+}
+
+.preset-btn__res {
+  font-size: 0.625rem;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+  transition: color var(--transition-fast);
+}
+
+/* Active preset state */
+.preset-btn.is-active {
+  background-color: var(--color-primary-subtle);
+  border-color: var(--color-primary);
+}
+
+.preset-btn.is-active .preset-btn__name {
+  color: var(--color-primary);
+}
+
+.preset-btn.is-active .preset-btn__res {
+  color: var(--color-primary);
+  opacity: 0.7;
+}
+
+.preset-btn.is-active:hover {
+  background-color: var(--color-primary-subtle);
 }
 
 /* ── Toggle Switch (background / watermark) ──────────────────── */
@@ -1352,6 +1503,10 @@
     padding: 0 var(--space-4) var(--space-4);
   }
 
+  .resize-custom-reveal__body {
+    padding: 0 var(--space-4) var(--space-4);
+  }
+
   .sidebar__hint--below {
     padding: 0 var(--space-4) var(--space-3);
   }
@@ -1365,13 +1520,14 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  .dimensions-row {
-    flex-wrap: wrap;
+  .dimensions-group__input {
+    min-width: 0;
+    padding: var(--space-2) var(--space-2);
   }
 
-  .dimensions-row__input {
-    flex: 1;
-    min-width: 70px;
+  .dimensions-group__lock {
+    width: 28px;
+    height: 28px;
   }
 
   .segmented-control--sm .segmented-control__item {

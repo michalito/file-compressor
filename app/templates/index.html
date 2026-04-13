@@ -121,7 +121,7 @@
                     </div>
                     <p class="sidebar__hint" id="compression-hint">Highest quality, preserves original format (HEIC outputs as PNG)</p>
 
-                    <div class="quality-slider is-hidden" id="quality-slider-group">
+                    <div class="quality-slider sidebar__sub-divider is-hidden" id="quality-slider-group">
                         <div class="quality-slider__header">
                             <label class="quality-slider__label" for="quality-slider">Quality</label>
                             <output class="quality-slider__value" id="quality-value" for="quality-slider">80</output>
@@ -133,7 +133,7 @@
                         </div>
                     </div>
 
-                    <div class="sidebar__format-row" id="format-row">
+                    <div class="sidebar__format-row sidebar__sub-divider" id="format-row">
                         <span class="sidebar__format-label">Output format</span>
                         <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Output format" id="format-control">
                             <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="auto">Auto</button>
@@ -146,31 +146,50 @@
             </div>
 
             <!-- Resize -->
-            <div class="sidebar__section is-open" data-section="resize">
-                <button type="button" class="sidebar__section-header" aria-expanded="true" aria-controls="section-resize">
+            <div class="sidebar__section" data-section="resize">
+                <div class="sidebar__section-header sidebar__section-header--static">
                     <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-maximize"/></svg>
                     <span class="sidebar__section-title">Resize</span>
-                    <svg class="icon sidebar__section-chevron" width="14" height="14" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
-                </button>
-                <div class="sidebar__section-body" id="section-resize">
-                    <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Resize mode" id="resize-mode-control">
-                        <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="original">Original</button>
-                        <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="custom">Custom</button>
-                    </div>
+                    <label class="sidebar__toggle" for="resize-toggle">
+                        <input type="checkbox" id="resize-toggle" class="sidebar__toggle-input sr-only">
+                        <span class="sidebar__toggle-switch" aria-hidden="true"></span>
+                        <span class="sr-only">Enable custom resize</span>
+                    </label>
+                </div>
 
-                    <div class="sidebar__custom-section is-hidden" id="custom-size-section">
-                        <div class="dimensions-row">
-                            <label class="dimensions-row__label sr-only" for="custom-width">Width</label>
-                            <input type="number" class="dimensions-row__input" id="custom-width" min="1" max="10000" placeholder="W" aria-label="Width in pixels">
-                            <span class="dimensions-row__sep" aria-hidden="true">&times;</span>
-                            <label class="dimensions-row__label sr-only" for="custom-height">Height</label>
-                            <input type="number" class="dimensions-row__input" id="custom-height" min="1" max="10000" placeholder="H" aria-label="Height in pixels">
-                            <span class="dimensions-row__label">px</span>
+                <div class="resize-custom-reveal" id="custom-size-section" aria-hidden="true">
+                    <div class="resize-custom-reveal__body">
+                        <div class="dimensions-group">
+                            <div class="dimensions-group__inputs">
+                                <input type="number" class="dimensions-group__input" id="custom-width"
+                                       min="1" max="10000" placeholder="Width" aria-label="Width in pixels">
+
+                                <button type="button" class="dimensions-group__lock" id="aspect-ratio-toggle"
+                                        aria-label="Lock aspect ratio" aria-pressed="false" title="Lock aspect ratio">
+                                    <svg class="icon dimensions-group__lock-icon dimensions-group__lock-icon--locked" width="14" height="14" aria-hidden="true"><use href="#icon-lock"/></svg>
+                                    <svg class="icon dimensions-group__lock-icon dimensions-group__lock-icon--unlocked" width="14" height="14" aria-hidden="true"><use href="#icon-unlock"/></svg>
+                                </button>
+
+                                <input type="number" class="dimensions-group__input" id="custom-height"
+                                       min="1" max="10000" placeholder="Height" aria-label="Height in pixels">
+
+                                <span class="dimensions-group__unit" aria-hidden="true">px</span>
+                            </div>
                         </div>
-                        <div class="preset-buttons">
-                            <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1920" data-height="1080">Full HD</button>
-                            <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="1280" data-height="720">HD</button>
-                            <button type="button" class="btn btn--secondary btn--sm preset-btn" data-width="800" data-height="600">Web</button>
+
+                        <div class="preset-buttons" role="group" aria-label="Size presets">
+                            <button type="button" class="preset-btn" data-width="1920" data-height="1080">
+                                <span class="preset-btn__name">Full HD</span>
+                                <span class="preset-btn__res">1920 &times; 1080</span>
+                            </button>
+                            <button type="button" class="preset-btn" data-width="1280" data-height="720">
+                                <span class="preset-btn__name">HD</span>
+                                <span class="preset-btn__res">1280 &times; 720</span>
+                            </button>
+                            <button type="button" class="preset-btn" data-width="800" data-height="600">
+                                <span class="preset-btn__name">Web</span>
+                                <span class="preset-btn__res">800 &times; 600</span>
+                            </button>
                         </div>
                     </div>
                 </div>

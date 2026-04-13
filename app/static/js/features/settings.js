@@ -76,6 +76,7 @@ export function initSettings() {
   initResizeMode();
   initPresets();
   initAspectRatio();
+  initAspectRatioLock();
   initBackground();
   initWatermarkEditor();
 
@@ -360,22 +361,29 @@ function initFormatControl() {
   });
 }
 
-/* ── Resize mode segmented control ────────────────────────────────── */
+/* ── Resize toggle ───────────────────────────────────────────────── */
 
 function initResizeMode() {
-  const control = $('#resize-mode-control');
-  if (!control) return;
+  const toggle = $('#resize-toggle');
+  if (!toggle) return;
 
-  initSegmentedControl(control, (value) => {
-    toggleHidden('#custom-size-section', value !== 'custom');
+  toggle.addEventListener('change', () => {
+    const enabled = toggle.checked;
+    const section = $('#custom-size-section');
+    if (section) {
+      section.classList.toggle('is-open', enabled);
+      section.setAttribute('aria-hidden', String(!enabled));
+    }
 
-    if (value === 'original') {
+    if (!enabled) {
       resizeAspectRatio = null;
-      updateSettings('resize', { mode: value, width: null, height: null });
+      syncLockButton();
+      clearActivePreset();
+      updateSettings('resize', { mode: 'original', width: null, height: null });
     } else {
       const w = parseInt($('#custom-width')?.value, 10) || null;
       const h = parseInt($('#custom-height')?.value, 10) || null;
-      updateSettings('resize', { mode: value, width: w, height: h });
+      updateSettings('resize', { mode: 'custom', width: w, height: h });
     }
   });
 }
@@ -394,12 +402,49 @@ function initPresets() {
       if (heightInput) heightInput.value = h;
       resizeAspectRatio = w / h;
 
-      // Ensure custom mode is active
-      setSegmentedValue('#resize-mode-control', 'custom');
-      toggleHidden('#custom-size-section', false);
+      // Mark this preset as active, clear others
+      setActivePreset(btn);
+      syncLockButton();
+
+      // Ensure toggle is on
+      const toggle = $('#resize-toggle');
+      if (toggle && !toggle.checked) {
+        toggle.checked = true;
+        const section = $('#custom-size-section');
+        if (section) {
+          section.classList.add('is-open');
+          section.setAttribute('aria-hidden', 'false');
+        }
+      }
 
       updateSettings('resize', { mode: 'custom', width: w, height: h });
     });
+  });
+}
+
+/* ── Preset active-state helpers ─────────────────────────────────── */
+
+function setActivePreset(activeBtn) {
+  $$('.preset-btn').forEach((btn) => {
+    btn.classList.toggle('is-active', btn === activeBtn);
+  });
+}
+
+function clearActivePreset() {
+  $$('.preset-btn').forEach((btn) => {
+    btn.classList.remove('is-active');
+  });
+}
+
+/** Check if current dimensions match any preset; if so, highlight it. */
+function syncActivePreset() {
+  const w = parseInt($('#custom-width')?.value, 10);
+  const h = parseInt($('#custom-height')?.value, 10);
+
+  $$('.preset-btn').forEach((btn) => {
+    const pw = parseInt(btn.dataset.width, 10);
+    const ph = parseInt(btn.dataset.height, 10);
+    btn.classList.toggle('is-active', pw === w && ph === h);
   });
 }
 
@@ -425,30 +470,58 @@ function initAspectRatio() {
   };
 
   widthInput.addEventListener('input', () => {
-    if (!widthInput.value || !heightInput.value) {
-      resizeAspectRatio = null;
-      return;
-    }
     syncOther(widthInput, heightInput);
+    syncActivePreset();
   });
 
   heightInput.addEventListener('input', () => {
-    if (!widthInput.value || !heightInput.value) {
-      resizeAspectRatio = null;
-      return;
-    }
     syncOther(heightInput, widthInput);
+    syncActivePreset();
   });
 
   // Commit dimensions on change (blur / Enter)
   const commitDimensions = () => {
+    const toggle = $('#resize-toggle');
+    if (!toggle?.checked) return;
     const w = parseInt(widthInput.value, 10) || null;
     const h = parseInt(heightInput.value, 10) || null;
-    updateSettings('resize', { width: w, height: h });
+    updateSettings('resize', { mode: 'custom', width: w, height: h });
   };
 
   widthInput.addEventListener('change', commitDimensions);
   heightInput.addEventListener('change', commitDimensions);
+}
+
+/* ── Aspect ratio lock toggle ────────────────────────────────────── */
+
+function initAspectRatioLock() {
+  const lockBtn = $('#aspect-ratio-toggle');
+  if (!lockBtn) return;
+
+  lockBtn.addEventListener('click', () => {
+    if (resizeAspectRatio !== null) {
+      // Unlock
+      resizeAspectRatio = null;
+    } else {
+      // Lock — compute ratio from current values
+      const w = parseInt($('#custom-width')?.value, 10);
+      const h = parseInt($('#custom-height')?.value, 10);
+      if (w && h) {
+        resizeAspectRatio = w / h;
+      }
+    }
+    syncLockButton();
+  });
+}
+
+function syncLockButton() {
+  const lockBtn = $('#aspect-ratio-toggle');
+  if (!lockBtn) return;
+
+  const isLocked = resizeAspectRatio !== null;
+  lockBtn.setAttribute('aria-pressed', String(isLocked));
+  lockBtn.setAttribute('title', isLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio');
+  lockBtn.setAttribute('aria-label', isLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio');
 }
 
 /* ── Background removal ──────────────────────────────────────────── */
@@ -521,8 +594,19 @@ function syncControlsFromState() {
   syncCompressionControls();
 
   // Resize
-  setSegmentedValue('#resize-mode-control', resize.mode);
-  toggleHidden('#custom-size-section', resize.mode !== 'custom');
+  const isCustom = resize.mode === 'custom';
+  const resizeToggle = $('#resize-toggle');
+  if (resizeToggle) resizeToggle.checked = isCustom;
+  const customSection = $('#custom-size-section');
+  if (customSection) {
+    // Suppress animation on initial load
+    customSection.style.transition = 'none';
+    customSection.classList.toggle('is-open', isCustom);
+    customSection.setAttribute('aria-hidden', String(!isCustom));
+    requestAnimationFrame(() => {
+      customSection.style.transition = '';
+    });
+  }
   if (resize.width) {
     const w = $('#custom-width');
     if (w) w.value = resize.width;
@@ -531,6 +615,12 @@ function syncControlsFromState() {
     const h = $('#custom-height');
     if (h) h.value = resize.height;
   }
+  // Restore aspect ratio from persisted dimensions
+  if (resize.width && resize.height) {
+    resizeAspectRatio = resize.width / resize.height;
+  }
+  syncLockButton();
+  syncActivePreset();
 
   // Background removal
   const bgToggle = $('#background-toggle');
