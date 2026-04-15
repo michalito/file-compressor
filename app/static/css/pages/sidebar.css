@@ -553,36 +553,39 @@
   border-radius: var(--radius-lg);
 }
 
-/* ── AI Status: inline dot in section header ──────────────────── */
+/* ── AI Status: pill badge in section header ──────────────────── */
 .sidebar__section-header-shell .sidebar__ai-status {
-  min-height: auto;
-  padding: 0;
-  border: none;
-  background: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 0.625rem;
-  font-weight: var(--weight-normal);
-  color: var(--color-text-tertiary);
-  line-height: 1;
-  border-radius: 0;
+  gap: var(--space-1);
   margin-left: auto;
   margin-right: var(--space-1);
+  padding: 1px var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-normal);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: none;
+  color: var(--color-text-tertiary);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .sidebar__section-header-shell .sidebar__ai-status::before {
   content: '';
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: var(--radius-full);
   flex-shrink: 0;
   background-color: var(--color-border-hover);
   transition: background-color var(--transition-fast);
+}
+
+/* Pending / Starting */
+.sidebar__section-header-shell .sidebar__ai-status--pending {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning);
 }
 
 .sidebar__section-header-shell .sidebar__ai-status--pending::before {
@@ -590,20 +593,34 @@
   animation: ai-status-pulse 1.5s ease-in-out infinite;
 }
 
+/* Healthy / Ready */
 .sidebar__section-header-shell .sidebar__ai-status--healthy {
-  color: var(--color-text-tertiary);
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
 }
 
 .sidebar__section-header-shell .sidebar__ai-status--healthy::before {
   background-color: var(--color-success);
 }
 
+/* Error / Unavailable */
 .sidebar__section-header-shell .sidebar__ai-status--error {
-  color: var(--color-text-tertiary);
+  background-color: var(--color-error-subtle);
+  color: var(--color-error);
 }
 
 .sidebar__section-header-shell .sidebar__ai-status--error::before {
-  background-color: var(--color-warning);
+  background-color: var(--color-error);
+}
+
+/* Disabled (config-level off) */
+.sidebar__section-header-shell .sidebar__ai-status--disabled {
+  color: var(--color-text-tertiary);
+  border: 1px solid var(--color-border);
+}
+
+.sidebar__section-header-shell .sidebar__ai-status--disabled::before {
+  background-color: var(--color-border-hover);
 }
 
 @keyframes ai-status-pulse {

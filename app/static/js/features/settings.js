@@ -474,21 +474,32 @@ function syncAIUpscaleStatus() {
   const el = $('#ai-upscale-status');
   if (!el) return;
 
-  el.classList.remove('sidebar__ai-status--pending', 'sidebar__ai-status--healthy', 'sidebar__ai-status--error');
+  el.classList.remove('sidebar__ai-status--pending', 'sidebar__ai-status--healthy', 'sidebar__ai-status--error', 'sidebar__ai-status--disabled');
+
+  const reason = aiUpscaleHealthState.reason || '';
+  let label;
+  let modifier;
 
   if (aiUpscaleHealthState.loading) {
-    el.classList.add('sidebar__ai-status--pending');
-    el.textContent = aiUpscaleHealthState.reason || 'Checking…';
+    modifier = 'pending';
+    label = 'Checking\u2026';
   } else if (aiUpscaleHealthState.state === 'starting') {
-    el.classList.add('sidebar__ai-status--pending');
-    el.textContent = aiUpscaleHealthState.reason || 'Starting…';
+    modifier = 'pending';
+    label = 'Starting\u2026';
   } else if (aiUpscaleHealthState.enabled && aiUpscaleHealthState.healthy) {
-    el.classList.add('sidebar__ai-status--healthy');
-    el.textContent = aiUpscaleHealthState.reason || 'Ready';
+    modifier = 'healthy';
+    label = 'Ready';
+  } else if (!aiUpscaleHealthState.enabled && aiUpscaleHealthState.state === 'disabled') {
+    modifier = 'disabled';
+    label = 'Disabled';
   } else {
-    el.classList.add('sidebar__ai-status--error');
-    el.textContent = aiUpscaleHealthState.reason || 'Unavailable';
+    modifier = 'error';
+    label = 'Unavailable';
   }
+
+  el.classList.add(`sidebar__ai-status--${modifier}`);
+  el.textContent = label;
+  el.title = reason;
 }
 
 async function refreshAIUpscaleHealth() {
