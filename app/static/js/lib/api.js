@@ -93,12 +93,19 @@ export async function api(url, options = {}) {
 
   merged.headers = headers;
 
-  // Add CSRF token for non-GET requests
+  // Add CSRF token for every state-changing request, including body-less
+  // methods such as DELETE that would otherwise trigger a full-page reload
+  // on CSRF failure.
   if (merged.method && merged.method !== 'GET') {
+    const csrfToken = getCSRFToken();
+    if (csrfToken) {
+      merged.headers.set('X-CSRFToken', csrfToken);
+    }
+
     if (merged.body instanceof FormData) {
-      merged.body.set('csrf_token', getCSRFToken());
-    } else if (merged.headers.get('Content-Type') === 'application/json') {
-      merged.headers.set('X-CSRFToken', getCSRFToken());
+      if (csrfToken) {
+        merged.body.set('csrf_token', csrfToken);
+      }
     }
   }
 

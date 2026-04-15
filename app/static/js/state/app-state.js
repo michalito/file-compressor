@@ -18,6 +18,8 @@ const defaultWatermarkLayer = {
 };
 
 const defaultSettings = {
+  workflow: { mode: 'optimize' },
+  aiUpscale: { modelPreset: 'photo', scale: 2, outputFormat: 'png', quality: null },
   compress: { mode: 'lossless', outputFormat: 'auto', quality: null },
   resize: { mode: 'original', width: null, height: null, locked: false },
   background: { enabled: false },
@@ -40,6 +42,8 @@ function cloneDefaultWatermarkSettings() {
 
 function cloneDefaultSettings() {
   return {
+    workflow: { ...defaultSettings.workflow },
+    aiUpscale: { ...defaultSettings.aiUpscale },
     compress: { ...defaultSettings.compress },
     resize: { ...defaultSettings.resize },
     background: { ...defaultSettings.background },
@@ -288,6 +292,8 @@ function createState() {
     defaultState.settings = {
       ...defaultState.settings,
       ...savedSettings,
+      workflow: { ...defaultState.settings.workflow, ...(savedSettings.workflow || {}) },
+      aiUpscale: { ...defaultState.settings.aiUpscale, ...(savedSettings.aiUpscale || {}) },
       compress: { ...defaultState.settings.compress, ...(savedSettings.compress || {}) },
       resize: migrateResizeSettings(savedSettings.resize || {}),
       background: { ...defaultState.settings.background, ...(savedSettings.background || {}) },
@@ -323,9 +329,24 @@ export function getEffectiveWatermarkState() {
 }
 
 export function getProcessingSnapshot() {
+  const workflowMode = state.settings.workflow?.mode || 'optimize';
+  if (workflowMode === 'ai-upscale') {
+    const aiUpscale = state.settings.aiUpscale || defaultSettings.aiUpscale;
+    return {
+      workflow: { mode: 'ai-upscale' },
+      aiUpscale: {
+        modelPreset: aiUpscale.modelPreset ?? defaultSettings.aiUpscale.modelPreset,
+        scale: aiUpscale.scale ?? defaultSettings.aiUpscale.scale,
+        outputFormat: aiUpscale.outputFormat ?? defaultSettings.aiUpscale.outputFormat,
+        quality: aiUpscale.outputFormat === 'png' ? null : aiUpscale.quality ?? defaultSettings.aiUpscale.quality,
+      },
+    };
+  }
+
   const watermark = getActiveWatermark();
 
   return {
+    workflow: { mode: 'optimize' },
     compress: { ...state.settings.compress },
     resize: {
       mode: state.settings.resize.mode,
@@ -416,6 +437,8 @@ export function addFile(fileId, file, blobUrl) {
     blobUrl,
     processedData: null,     // { data, filename, metadata }
     processedWithSettings: null,
+    upscaleJob: null,
+    artifactRefs: null,
     errorMessage: null,
   });
   bus.emit('files:added', { fileId });
@@ -428,7 +451,7 @@ export function addFile(fileId, file, blobUrl) {
 export function removeFile(fileId) {
   const entry = state.files.get(fileId);
   if (entry) {
-    if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl);
+    if (entry.blobUrl?.startsWith?.('blob:')) URL.revokeObjectURL(entry.blobUrl);
     state.files.delete(fileId);
     bus.emit('files:removed', { fileId });
     bus.emit('files:countChanged', { total: state.files.size });
@@ -451,7 +474,7 @@ export function updateFile(fileId, updates) {
  */
 export function clearAllFiles() {
   for (const entry of state.files.values()) {
-    if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl);
+    if (entry.blobUrl?.startsWith?.('blob:')) URL.revokeObjectURL(entry.blobUrl);
   }
   state.files.clear();
   setWatermarkPreviewFileId(null);

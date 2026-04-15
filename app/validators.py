@@ -29,10 +29,30 @@ MAX_WATERMARK_IMAGE_PIXELS = MAX_WATERMARK_IMAGE_DIMENSION * MAX_WATERMARK_IMAGE
 ALLOWED_WATERMARK_POSITIONS = {'bottom-right', 'bottom-left', 'top-right', 'top-left', 'center', 'tiled'}
 ALLOWED_WATERMARK_COLORS = {'white', 'black', 'auto'}
 ALLOWED_ROTATIONS = {0, 90, 180, 270}
+SAFE_AI_IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
 
 TRUE_VALUES = {'1', 'true', 'on', 'yes'}
 FALSE_VALUES = {'0', 'false', 'off', 'no'}
 WHOLE_NUMBER_PATTERN = re.compile(r'^\d+$')
+
+
+def format_file_size_label(size_bytes: int) -> str:
+    units = (
+        ('GB', 1024 ** 3),
+        ('MB', 1024 ** 2),
+        ('KB', 1024),
+    )
+    for suffix, factor in units:
+        if size_bytes >= factor:
+            value = size_bytes / factor
+            if value.is_integer():
+                return f'{int(value)} {suffix}'
+            return f'{value:.1f} {suffix}'
+    return f'{int(size_bytes)} bytes'
+
+
+def is_safe_ai_identifier(value: str) -> bool:
+    return bool(value) and bool(SAFE_AI_IDENTIFIER_PATTERN.fullmatch(value))
 
 
 def validate_file(file: FileStorage) -> Tuple[bool, Optional[str]]:

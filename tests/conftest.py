@@ -8,6 +8,7 @@ def app(monkeypatch):
     monkeypatch.setenv('SECRET_KEY', 'test-secret-key')
     monkeypatch.setenv('FLASK_ENV', 'development')
     monkeypatch.setenv('PROXY_FIX', 'false')
+    monkeypatch.setenv('AI_UPSCALER_ENABLED', 'false')
 
     app = create_app()
     app.config['TESTING'] = True

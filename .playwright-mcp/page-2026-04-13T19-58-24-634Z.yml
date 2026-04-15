@@ -1,0 +1,136 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e3]:
+    - generic [ref=e5]: Compressify
+    - generic [ref=e6]:
+      - button "Toggle settings" [expanded] [ref=e7] [cursor=pointer]:
+        - img [ref=e8]
+      - button "Toggle theme" [ref=e10] [cursor=pointer]:
+        - img [ref=e11]
+        - img [ref=e13]
+      - link "Log out" [ref=e15] [cursor=pointer]:
+        - /url: /logout
+        - img [ref=e16]
+        - generic [ref=e18]: Logout
+  - main [ref=e19]:
+    - generic [ref=e20]:
+      - generic [ref=e22]:
+        - button "Choose File" [ref=e23]
+        - generic [ref=e24]:
+          - generic [ref=e26]:
+            - img [ref=e27]
+            - generic [ref=e29]: "0"
+            - text: files
+          - generic [ref=e30]:
+            - button "Add More" [ref=e31] [cursor=pointer]:
+              - img [ref=e32]
+              - generic [ref=e34]: Add More
+            - button "Download All" [disabled]:
+              - img
+              - generic: Download All
+            - button "Clear All" [ref=e35] [cursor=pointer]:
+              - generic [ref=e36]: Clear All
+        - generic [ref=e37]:
+          - img [ref=e38]
+          - paragraph [ref=e40]: Drop images here to get started
+          - button "Choose Images" [ref=e41] [cursor=pointer]:
+            - img [ref=e42]
+            - generic [ref=e44]: Choose Images
+          - paragraph [ref=e45]: JPG, PNG, WebP, TIFF, HEIC · Max 50 MB per file
+      - complementary "Settings and tools" [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - img [ref=e49]
+            - heading "Settings & Tools" [level=2] [ref=e51]
+            - button "Close settings" [ref=e52] [cursor=pointer]:
+              - img [ref=e53]
+          - generic [ref=e55]:
+            - generic [ref=e56]: Workflow
+            - radiogroup "Workflow" [ref=e57]:
+              - radio "Optimize" [checked] [ref=e58] [cursor=pointer]
+              - radio "AI Upscale" [ref=e59] [cursor=pointer]
+          - generic [ref=e60]: Lossless · Original size
+        - generic [ref=e61]:
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - button "Compression" [expanded] [ref=e64] [cursor=pointer]:
+                - img [ref=e65]
+                - generic [ref=e67]: Compression
+                - img [ref=e68]
+              - button "Choose between lossless, balanced, or maximum compression. Background removal forces lossless PNG output." [ref=e70]:
+                - img [ref=e71]
+                - text: Choose between lossless, balanced, or maximum compression. Background removal forces lossless PNG output.
+            - generic [ref=e73]:
+              - radiogroup "Compression mode" [ref=e74]:
+                - radio "Lossless" [checked] [ref=e75] [cursor=pointer]
+                - radio "Balanced" [ref=e76] [cursor=pointer]
+                - radio "Maximum" [ref=e77] [cursor=pointer]
+              - generic [ref=e78]:
+                - generic [ref=e79]: Output format
+                - radiogroup "Output format" [ref=e80]:
+                  - radio "Auto" [checked] [ref=e81] [cursor=pointer]
+                  - radio "PNG" [ref=e82] [cursor=pointer]
+                  - radio "WebP" [ref=e83] [cursor=pointer]
+                  - radio "JPEG" [ref=e84] [cursor=pointer]
+          - text: Runs Real-ESRGAN through the internal CPU upscaler service. AI upscaling is slower and quality-focused.
+          - generic [ref=e85]:
+            - generic [ref=e86] [cursor=pointer]:
+              - img [ref=e87]
+              - generic [ref=e89]: Resize
+              - button "Fits within the bounds you set. Aspect ratio is preserved. Smaller images can be enlarged." [ref=e90]:
+                - img [ref=e91]
+                - text: Fits within the bounds you set. Aspect ratio is preserved. Smaller images can be enlarged.
+              - generic [ref=e93]:
+                - checkbox "Enable custom resize" [ref=e94]
+                - generic [ref=e96]: Enable custom resize
+            - generic [ref=e97]:
+              - generic [ref=e99]:
+                - textbox [ref=e100]:
+                  - /placeholder: Width
+                - button [ref=e101] [cursor=pointer]:
+                  - img [ref=e102]
+                - textbox [ref=e104]:
+                  - /placeholder: Height
+                - generic [ref=e105]: px
+              - group [ref=e106]:
+                - button [ref=e107] [cursor=pointer]:
+                  - generic [ref=e108]: 4K
+                  - generic [ref=e109]: 3840 × 2160
+                - button [ref=e110] [cursor=pointer]:
+                  - generic [ref=e111]: Full HD
+                  - generic [ref=e112]: 1920 × 1080
+                - button [ref=e113] [cursor=pointer]:
+                  - generic [ref=e114]: HD
+                  - generic [ref=e115]: 1280 × 720
+                - button [ref=e116] [cursor=pointer]:
+                  - generic [ref=e117]: Web
+                  - generic [ref=e118]: 800 × 600
+          - generic [ref=e120] [cursor=pointer]:
+            - img [ref=e121]
+            - generic [ref=e123]: Background Removal
+            - button "Isolates the main subject and outputs a transparent PNG. Compression mode and format lock while enabled." [ref=e124]:
+              - img [ref=e125]
+              - text: Isolates the main subject and outputs a transparent PNG. Compression mode and format lock while enabled.
+            - generic [ref=e127]:
+              - checkbox "Enable background removal" [ref=e128]
+              - generic [ref=e130]: Enable background removal
+          - generic [ref=e131]:
+            - generic [ref=e132] [cursor=pointer]:
+              - img [ref=e133]
+              - generic [ref=e135]: Watermark
+              - button "Stack text, logo, and QR layers with independent transforms. The preview uses the selected image tile." [ref=e136]:
+                - img [ref=e137]
+                - text: Stack text, logo, and QR layers with independent transforms. The preview uses the selected image tile.
+              - generic [ref=e139]:
+                - checkbox "Enable watermark" [ref=e140]
+                - generic [ref=e142]: Enable watermark
+            - text: Optional text mark with independent placement and contrast. Upload a PNG logo and tune its own transform. Generate and place a QR stamp independently. Use an absolute http:// or https:// URL.
+  - contentinfo [ref=e143]:
+    - generic [ref=e144]:
+      - generic [ref=e145]: Compressify
+      - generic [ref=e146]: v1.2.2
+      - generic [ref=e147]: ·
+      - generic [ref=e148]: Drop files anywhere to compress
+      - generic [ref=e149]: ·
+      - generic [ref=e150]: JPG · PNG · WebP · TIFF · HEIC

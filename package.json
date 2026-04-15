@@ -1,7 +1,7 @@
 {
   "name": "file-compressor",
   "version": "1.0.0",
-  "description": "A self-hosted, password-protected web application for image compression and resizing. All processing happens in-memory on the server — no files are stored on disk.",
+  "description": "A self-hosted, password-protected web application for image compression, background removal, resizing, watermarking, and optional Real-ESRGAN AI upscaling.",
   "main": "index.js",
   "directories": {
     "doc": "docs",

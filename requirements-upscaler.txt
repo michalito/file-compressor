@@ -1,0 +1,8 @@
+# Torch is installed separately from the PyTorch CPU wheel index in Docker.
+# For non-Docker runs, install torch==2.6.0 from https://download.pytorch.org/whl/cpu first.
+Flask==3.1.0
+gunicorn==23.0.0
+Pillow==12.2.0
+pillow-heif==1.3.0
+numpy
+opencv-python-headless==4.13.0.92

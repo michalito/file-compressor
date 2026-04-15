@@ -3,7 +3,7 @@
         <!-- Header -->
         <div class="tile__header">
             <span class="tile__filename"></span>
-            <div class="tile__status-badges"></div>
+            <div class="tile__status-badges" aria-live="polite"></div>
             <button class="btn btn--icon tile__remove-btn" aria-label="Remove image" type="button">
                 <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#icon-x"/></svg>
             </button>
@@ -50,8 +50,10 @@
         <!-- Progress (hidden by default) -->
         <div class="tile__progress is-hidden">
             <div class="progress-inline">
-                <div class="progress-inline__bar progress-inline__bar--indeterminate"></div>
+                <div class="progress-inline__bar progress-inline__bar--indeterminate"
+                     role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Waiting"></div>
             </div>
+            <div class="tile__progress-text" role="status" aria-live="polite"></div>
         </div>
 
         <!-- Actions -->

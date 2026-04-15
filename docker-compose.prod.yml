@@ -1,13 +1,17 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      target: web-runtime
     ports:
       - "8000:8000"
     env_file:
       - .env
     environment:
-      - FLASK_ENV=production
-      - PROXY_FIX=true
+      FLASK_ENV: production
+      PROXY_FIX: true
+      AI_UPSCALER_ENABLED: ${AI_UPSCALER_ENABLED:-true}
+      AI_UPSCALER_URL: http://upscaler:8765
     volumes:
       - app_secrets:/app/instance/secrets
     restart: unless-stopped
@@ -23,5 +27,49 @@ services:
         max-size: "200k"
         max-file: "10"
 
+  upscaler:
+    profiles: ["ai"]
+    build:
+      context: .
+      target: upscaler-cpu-runtime
+    environment:
+      AI_UPSCALER_HOST: 0.0.0.0
+      AI_UPSCALER_PORT: 8765
+      AI_UPSCALER_BACKEND: ${AI_UPSCALER_BACKEND:-torch-cpu}
+      AI_UPSCALER_API_KEY: ${AI_UPSCALER_API_KEY:-}
+      AI_UPSCALER_MODEL_CACHE_DIR: /models
+      AI_UPSCALER_AUTO_DOWNLOAD_MODELS: ${AI_UPSCALER_AUTO_DOWNLOAD_MODELS:-true}
+      AI_UPSCALER_PRELOAD_MODELS: ${AI_UPSCALER_PRELOAD_MODELS:-false}
+      AI_UPSCALER_MODEL_CACHE_SIZE: ${AI_UPSCALER_MODEL_CACHE_SIZE:-1}
+      AI_UPSCALER_CPU_THREADS: ${AI_UPSCALER_CPU_THREADS:-0}
+      AI_UPSCALER_INTEROP_THREADS: ${AI_UPSCALER_INTEROP_THREADS:-1}
+      AI_UPSCALER_MEMORY_LIMIT_BYTES: ${AI_UPSCALER_MEMORY_LIMIT_BYTES:-0}
+      AI_UPSCALER_MEMORY_TARGET_PERCENT: ${AI_UPSCALER_MEMORY_TARGET_PERCENT:-0.75}
+      AI_UPSCALER_MEMORY_RESERVED_BYTES: ${AI_UPSCALER_MEMORY_RESERVED_BYTES:-805306368}
+      AI_UPSCALER_MAX_UPLOAD_BYTES: ${AI_UPSCALER_MAX_UPLOAD_BYTES:-52428800}
+      AI_UPSCALER_WORK_ROOT: /tmp/compressify-upscaler
+      AI_UPSCALER_MAX_WORKERS: ${AI_UPSCALER_MAX_WORKERS:-1}
+      AI_UPSCALE_ARTIFACT_TTL_SECONDS: ${AI_UPSCALE_ARTIFACT_TTL_SECONDS:-21600}
+    volumes:
+      - upscaler_models:/models
+      - upscaler_tmp:/tmp/compressify-upscaler
+    expose:
+      - "8765"
+    mem_limit: ${AI_UPSCALER_CONTAINER_MEMORY_LIMIT:-6g}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; data=json.load(urllib.request.urlopen('http://localhost:8765/health')); raise SystemExit(0 if data.get('healthy') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
 volumes:
   app_secrets:
+  upscaler_models:
+  upscaler_tmp:

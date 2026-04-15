@@ -1,6 +1,6 @@
 # Compressify
 
-A self-hosted, password-protected web application for image compression, background removal, and resizing. All processing happens in-memory on the server — no files are stored on disk.
+A self-hosted, password-protected web application for image compression, background removal, resizing, watermarking, and optional AI upscaling. The optimize pipeline runs entirely in-memory on the server; the AI upscaling workflow is the exception and uses ephemeral temp artifacts managed by a separate CPU worker container.
 
 Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**, **HEIC/HEIF**
 
@@ -15,6 +15,8 @@ Supported input formats: **JPG**, **PNG**, **WebP**, **TIFF**, **HEIC/HEIF**
 - **Live watermark preview** in the sidebar with per-image preview source selection
 - **Multiple watermark stacking** for text + logo + QR in a single pass
 - **Per-layer transform controls** so text, logo, and QR can each use their own position, opacity, size, angle, and tile density
+- **Dedicated AI Upscale workflow** powered by a Docker Compose managed CPU-only Real-ESRGAN worker with Photo and Anime presets
+- **Server-side AI previews and downloads** so full-resolution upscaled files are never pushed back to the browser as base64 JSON
 - **Automatic processing** on upload — no manual "Process" button needed
 - **Batch processing** with 5 concurrent uploads, progress tracking, time estimates, and cancel support
 - **Re-process** when settings change, **retry** for failed files
@@ -48,42 +50,85 @@ APP_PASSWORD=your-secure-password
 Start the development server:
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 Access the app at **http://localhost:5001**. This runs the Flask development server with hot-reload — code changes in `app/` are reflected immediately via volume mounts.
 
 > **Note:** `docker-compose.yml` is for development only. It runs Flask's dev server on port 5000 inside the container, mapped to host port 5001, with `FLASK_DEBUG=1` enabled.
 
+AI upscaling is optional in development and disabled by default. To start the CPU worker too, enable the `ai` profile:
+
+```bash
+docker compose --profile ai up --build
+```
+
+Then set `AI_UPSCALER_ENABLED=true` in `.env`. The web app talks to the worker over the internal Compose network at `http://upscaler:8765`.
+In development, the `upscaler` container also runs with Gunicorn `--reload`, so edits under `upscaler_service/` are picked up without rebuilding the container.
+The `upscaler` container now runs with an explicit memory limit (`6g` by default via `AI_UPSCALER_CONTAINER_MEMORY_LIMIT`) so the worker can plan tile sizes against the real cgroup budget instead of the host machine.
+
 ### Production
 
-Build and run the production image directly:
+Use the production Compose file:
 
 ```bash
-docker build -t compressify:prod .
-
-docker run -d --name compressify -p 8000:8000 \
-  -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))") \
-  -e APP_PASSWORD=your-secure-password \
-  compressify:prod
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Or use the production Compose file:
+Access the app at **http://localhost:8000**.
+
+AI upscaling is optional in production too. To start the worker container, enable the `ai` profile:
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml --profile ai up -d --build
 ```
 
-Access the app at **http://localhost:8000**. This runs Gunicorn with 1 worker, 2 threads, and a 120-second timeout.
+If you are not running the `ai` profile, set `AI_UPSCALER_ENABLED=false` so the UI does not advertise an unavailable worker.
+
+### Dokploy
+
+Deploy this app to Dokploy as a single **Docker Compose** service using `docker-compose.dokploy.yml`.
+
+Recommended production flow:
+
+1. GitHub Actions builds both runtime images from `Dockerfile`
+2. The workflow pushes them to GHCR
+3. Dokploy pulls those images via `WEB_IMAGE` and `UPSCALER_IMAGE`
+4. GitHub Actions triggers Dokploy through a deploy webhook after both images are published
+
+Required Dokploy environment variables:
+
+- `SECRET_KEY`
+- `APP_PASSWORD`
+- `WEB_IMAGE`
+- `UPSCALER_IMAGE`
+
+Recommended Dokploy environment variables:
+
+- `AI_UPSCALER_ENABLED=true`
+- `AI_UPSCALER_API_KEY=<long random secret>`
+- `PROCESS_RATE_LIMIT=120 per minute`
+
+Recommended Dokploy setup:
+
+- Service type: `Docker Compose`
+- Compose file: `docker-compose.dokploy.yml`
+- Domains: attach your public domain only to the `web` service on internal port `8000`
+- Isolated Deployments: enabled
+- Registry: configure GHCR in Dokploy so private image pulls succeed
+- Volume Backups: back up `app_secrets` and optionally `upscaler_models`; do not back up `upscaler_tmp`
+
+The GitHub Actions workflow is in `.github/workflows/deploy-dokploy.yml`. It expects:
+
+- `DOKPLOY_DEPLOY_WEBHOOK`
+- optional `GHCR_TOKEN` if you do not want to rely on the built-in `GITHUB_TOKEN`
+
+Do not use Dokploy Git auto-deploy for this path. Let the workflow trigger deployment only after both images are pushed successfully.
 
 To stop:
 
 ```bash
-# Direct Docker
-docker stop compressify && docker rm compressify
-
-# Docker Compose
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 ```
 
 <details>
@@ -105,6 +150,23 @@ Access at **http://localhost:5000**. Enable debug mode by setting `FLASK_DEBUG=1
 
 </details>
 
+## AI Upscaling
+
+The `AI Upscale` workflow is separate from the optimize/background/watermark pipeline. It proxies image uploads to an internal `compressify-upscaler` service that runs official Real-ESRGAN weights on CPU via PyTorch.
+
+- Flask validates file type and projected output size before a job is created
+- The current AI worker accepts 8-bit inputs only; convert 16-bit source images to 8-bit before using `AI Upscale`
+- The worker stages the image, plans against the container memory budget, chooses the official model for the selected preset and scale, retries with smaller tiles on CPU pressure, and writes a preview derivative
+- Full outputs and previews are stored only as temporary artifacts and are cleaned up after the configured TTL or when jobs are deleted
+- Model weights are auto-downloaded into the `upscaler_models` Docker volume on first startup and reused on later restarts
+
+### Compose Services
+
+- `web` is the authenticated Flask app
+- `upscaler` is an internal-only CPU worker on `http://upscaler:8765`
+- `upscaler_models` stores the official `.pth` weights
+- `upscaler_tmp` stores temporary AI artifacts and job files
+
 ## Configuration
 
 ### Environment Variables
@@ -117,6 +179,36 @@ Access at **http://localhost:5000**. Enable debug mode by setting `FLASK_DEBUG=1
 | `FLASK_DEBUG` | No | `0` | Set to `1` for debug mode with auto-reload (development only). |
 | `PROXY_FIX` | No | `false` | Set to `true` when running behind a reverse proxy (Nginx, Caddy, etc.). Enables Werkzeug's ProxyFix middleware for correct `X-Forwarded-*` header handling. |
 | `PROCESS_RATE_LIMIT` | No | `120 per minute` | Per-IP rate limit for `/process`. Raise or lower this based on expected batch size. |
+| `AI_UPSCALER_ENABLED` | No | `false` | Enables the `AI Upscale` workflow in the web UI. |
+| `AI_UPSCALER_URL` | No | `http://127.0.0.1:8765` | Base URL for the AI worker. In Docker Compose use `http://upscaler:8765`; for a local non-Docker worker use `http://127.0.0.1:8765`. |
+| `AI_UPSCALER_API_KEY` | No | empty | Optional shared secret sent as `X-API-Key` to the upscaler worker. |
+| `AI_UPSCALE_MAX_OUTPUT_DIMENSION` | No | `12000` | Rejects AI jobs whose projected output would exceed this width or height. |
+| `AI_UPSCALE_MAX_OUTPUT_PIXELS` | No | `100000000` | Rejects AI jobs whose projected output would exceed this total pixel count. |
+| `AI_UPSCALE_ARTIFACT_TTL_SECONDS` | No | `21600` | Temporary artifact lifetime for AI previews and full-resolution outputs. |
+
+### Worker Environment Variables
+
+These are used by the internal `upscaler` service:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AI_UPSCALER_BACKEND` | No | `torch-cpu` | Worker backend implementation. V1 supports `torch-cpu` only. |
+| `AI_UPSCALER_MODEL_CACHE_DIR` | No | `/models` | Directory where official Real-ESRGAN `.pth` weights are cached. In Compose this is the `upscaler_models` volume. |
+| `AI_UPSCALER_AUTO_DOWNLOAD_MODELS` | No | `true` | Downloads missing official weights into the model cache on startup. |
+| `AI_UPSCALER_PRELOAD_MODELS` | No | `false` | Opt-in preload for model weights. The default is on-demand loading with an LRU cache to keep worker RSS stable. |
+| `AI_UPSCALER_MODEL_CACHE_SIZE` | No | `1` | Number of loaded model bundles to keep resident in memory. |
+| `AI_UPSCALER_CPU_THREADS` | No | `0` | CPU thread count for PyTorch. `0` resolves to `min(4, host_cpu_count)`. |
+| `AI_UPSCALER_INTEROP_THREADS` | No | `1` | PyTorch inter-op thread count. |
+| `AI_UPSCALER_MEMORY_LIMIT_BYTES` | No | `0` | Explicit worker memory budget override in bytes. `0` auto-detects the container cgroup limit. |
+| `AI_UPSCALER_MEMORY_TARGET_PERCENT` | No | `0.75` | Fraction of the usable memory budget the planner treats as target working memory. |
+| `AI_UPSCALER_MEMORY_RESERVED_BYTES` | No | `805306368` | Reserved headroom for Python, PyTorch, and image encoding before accepting a job. |
+| `AI_UPSCALER_MAX_UPLOAD_BYTES` | No | `52428800` | Hard upload ceiling enforced directly by the worker Flask app, even if the internal port is hit without going through the web app. |
+| `AI_UPSCALER_WORK_ROOT` | No | OS temp dir | Root directory for per-job temp files and artifacts. |
+| `AI_UPSCALER_MAX_WORKERS` | No | `1` | Max concurrent upscale jobs. V1 defaults to one worker for predictable memory use. |
+| `AI_UPSCALER_API_KEY` | No | empty | Optional API key that must match the web app's setting. |
+| `AI_UPSCALER_CONTAINER_MEMORY_LIMIT` | Compose only | `6g` | Docker Compose memory limit for the `upscaler` service. The worker reads this cgroup limit and uses it for tile planning and admission control. |
+| `WEB_IMAGE` | Dokploy only | none | Full image reference for the web runtime image, for example `ghcr.io/<owner>/file-compressor-web:latest`. |
+| `UPSCALER_IMAGE` | Dokploy only | none | Full image reference for the upscaler runtime image, for example `ghcr.io/<owner>/file-compressor-upscaler:latest`. |
 
 ### Application Limits
 
@@ -130,6 +222,17 @@ Access at **http://localhost:5000**. Enable debug mode by setting `FLASK_DEBUG=1
 | Quality range | 1–100 |
 | Max filename length | 255 characters |
 
+### AI Upscaling Limits
+
+| Setting | Value |
+|---------|-------|
+| Max projected output dimension | 12,000 px per side |
+| Max projected output pixels | 100 MP |
+| Supported AI input bit depth | 8-bit only |
+| Preview long edge | 1,600 px |
+| Artifact TTL | 6 hours |
+| Worker concurrency | 1 |
+
 ### Rate Limits
 
 Per-IP, no daily limits:
@@ -139,6 +242,10 @@ Per-IP, no daily limits:
 | `/login` | 10 requests/minute |
 | `/process` | 120 requests/minute |
 | `/download` | 120 requests/minute |
+| `/ai-upscale/jobs` | 60 requests/minute |
+| `/ai-upscale/artifacts/<id>/preview` | 120 requests/minute |
+| `/ai-upscale/artifacts/<id>/download` | 120 requests/minute |
+| `/ai-upscale/download-all` | 60 requests/minute |
 
 ### Brute Force Protection
 
@@ -159,6 +266,11 @@ Navigate to the app URL and enter the password configured via `APP_PASSWORD`. Yo
 - You can add more files at any time using the **Add More** button or by dropping onto the workspace
 
 ### 3. Configure Settings
+
+Start by choosing a workflow in the sidebar header:
+
+- **Optimize** keeps the existing compression/background/watermark pipeline
+- **AI Upscale** switches to Real-ESRGAN batch upscaling and hides crop/background/watermark controls
 
 The inline settings panel offers these controls:
 
@@ -192,11 +304,21 @@ The inline settings panel offers these controls:
 - Uploaded logo files and generated QR PNGs are session-only and are not restored after a page reload
 - Browser preview may be unavailable for source formats the browser cannot decode locally (for example some TIFF/HEIC files); server-side processing still works
 
+**AI Upscale**:
+- **Model preset**: Photo or Anime / Illustration
+- **Scale**: 2x or 4x
+- **Output format**: PNG, WebP, or JPEG
+- **Quality slider**: shown only for WebP and JPEG
+- **Photo + 2x** uses the official `RealESRGAN_x2plus` model
+- **Photo + 4x** uses the official `RealESRGAN_x4plus` model
+- **Anime + 2x / 4x** uses the official `RealESRGAN_x4plus_anime_6B` model, with the 2x path produced via official post-resize from native 4x output
+- JPEG output flattens transparency; PNG and WebP preserve it
+
 Settings persist in your browser across sessions via localStorage.
 
 ### 4. Automatic Processing
 
-Images are **processed automatically** when uploaded — there is no manual "Process" button. Batch processing handles up to 5 images concurrently. A progress bar shows completion with a time estimate.
+Images are **processed automatically** when uploaded — there is no manual "Process" button. Batch processing handles up to 5 files concurrently in the optimize workflow and queues AI jobs through the internal CPU worker. A progress bar shows completion with a time estimate.
 
 **Toolbar actions** (appear after uploading files):
 - **Re-process** — appears when you change settings after processing; re-runs all files with new settings
@@ -209,6 +331,8 @@ Images are **processed automatically** when uploaded — there is no manual "Pro
 - **Per-image**: click the download button on any processed tile
 - **Download All**: downloads a single file directly, or creates a ZIP archive when multiple files are processed
 - Compression statistics (size reduction %) are shown as an overlay on each tile
+
+For `AI Upscale`, previews and downloads come from temporary server-side artifacts rather than in-browser base64 payloads.
 
 ## Compression Modes Reference
 

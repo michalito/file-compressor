@@ -1,8 +1,11 @@
 from flask import Flask, jsonify, request, session, url_for
 from dotenv import load_dotenv
 import os
+from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash
 from .auth import Auth, is_api_request
+from .ai_upscale import configure_ai_upscale_app
+from .validators import format_file_size_label
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_limiter.errors import RateLimitExceeded as LimiterRateLimitExceeded
@@ -67,6 +70,7 @@ def create_app():
         PERMANENT_SESSION_LIFETIME=1800,  # 30 minutes
         PROPAGATE_EXCEPTIONS=True
     )
+    configure_ai_upscale_app(app)
 
     # Configure ProxyFix for proper header handling
     if os.getenv('PROXY_FIX', 'false').lower() == 'true':
@@ -130,8 +134,16 @@ def create_app():
 
             if request.endpoint == 'main.process_image':
                 message = 'Rate limit exceeded for image processing. Try again shortly or use Retry Incomplete.'
+            elif request.endpoint == 'main.ai_upscale_create_job':
+                message = 'Rate limit exceeded for AI upscaling. Try again shortly or use Retry Incomplete.'
+            elif request.endpoint == 'main.ai_upscale_preview_artifact':
+                message = 'AI preview rate limit exceeded. Try again shortly.'
+            elif request.endpoint == 'main.ai_upscale_download_artifact':
+                message = 'AI download rate limit exceeded. Try again shortly.'
             elif request.endpoint == 'main.download_file':
                 message = 'Download rate limit exceeded. Try again shortly.'
+            elif request.endpoint == 'main.ai_upscale_download_all':
+                message = 'AI download rate limit exceeded. Try again shortly.'
             elif request.endpoint == 'main.crop_image':
                 message = 'Crop rate limit exceeded. Try again shortly.'
 
@@ -148,6 +160,21 @@ def create_app():
             return jsonify(payload), 429, headers
 
         return response
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_entity_too_large(error):
+        max_upload_bytes = app.config.get('MAX_CONTENT_LENGTH', 50 * 1024 * 1024)
+        message = f'Uploaded file is too large. Maximum file size is {format_file_size_label(max_upload_bytes)}.'
+
+        if is_api_request():
+            return jsonify({
+                'error': message,
+                'user_message': message,
+                'code': 'file_too_large',
+                'limit_bytes': max_upload_bytes,
+            }), 413
+
+        return message, 413
 
     # Make app version available to all templates
     app.jinja_env.globals['app_version'] = _read_version()
@@ -170,5 +197,21 @@ def create_app():
     app.view_functions['main.crop_image'] = limiter.limit(
         _get_rate_limit('CROP_RATE_LIMIT', "30 per minute")
     )(app.view_functions['main.crop_image'])
+    if 'main.ai_upscale_create_job' in app.view_functions:
+        app.view_functions['main.ai_upscale_create_job'] = limiter.limit(
+            _get_rate_limit('AI_UPSCALE_RATE_LIMIT', "60 per minute")
+        )(app.view_functions['main.ai_upscale_create_job'])
+    if 'main.ai_upscale_download_all' in app.view_functions:
+        app.view_functions['main.ai_upscale_download_all'] = limiter.limit(
+            _get_rate_limit('AI_UPSCALE_DOWNLOAD_RATE_LIMIT', "60 per minute")
+        )(app.view_functions['main.ai_upscale_download_all'])
+    if 'main.ai_upscale_preview_artifact' in app.view_functions:
+        app.view_functions['main.ai_upscale_preview_artifact'] = limiter.limit(
+            _get_rate_limit('AI_UPSCALE_ARTIFACT_RATE_LIMIT', "120 per minute")
+        )(app.view_functions['main.ai_upscale_preview_artifact'])
+    if 'main.ai_upscale_download_artifact' in app.view_functions:
+        app.view_functions['main.ai_upscale_download_artifact'] = limiter.limit(
+            _get_rate_limit('AI_UPSCALE_ARTIFACT_RATE_LIMIT', "120 per minute")
+        )(app.view_functions['main.ai_upscale_download_artifact'])
 
     return app

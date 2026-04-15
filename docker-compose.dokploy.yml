@@ -1,29 +1,30 @@
 services:
   web:
-    build:
-      context: .
-      target: web-runtime
-    command: python run.py
-    ports:
-      - "5001:5000"
-    env_file:
-      - .env
+    image: ${WEB_IMAGE:?WEB_IMAGE must be set}
+    pull_policy: always
+    expose:
+      - "8000"
     environment:
-      FLASK_ENV: development
-      FLASK_DEBUG: 1
-      PROXY_FIX: false
-      AI_UPSCALER_ENABLED: ${AI_UPSCALER_ENABLED:-false}
-      AI_UPSCALER_URL: ${AI_UPSCALER_URL:-http://upscaler:8765}
+      FLASK_ENV: production
+      PROXY_FIX: ${PROXY_FIX:-true}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
+      APP_PASSWORD: ${APP_PASSWORD:?APP_PASSWORD must be set}
+      PROCESS_RATE_LIMIT: ${PROCESS_RATE_LIMIT:-120 per minute}
+      AI_UPSCALER_ENABLED: ${AI_UPSCALER_ENABLED:-true}
+      AI_UPSCALER_URL: http://upscaler:8765
+      AI_UPSCALER_API_KEY: ${AI_UPSCALER_API_KEY:-}
+      AI_UPSCALE_MAX_OUTPUT_DIMENSION: ${AI_UPSCALE_MAX_OUTPUT_DIMENSION:-12000}
+      AI_UPSCALE_MAX_OUTPUT_PIXELS: ${AI_UPSCALE_MAX_OUTPUT_PIXELS:-100000000}
+      AI_UPSCALE_ARTIFACT_TTL_SECONDS: ${AI_UPSCALE_ARTIFACT_TTL_SECONDS:-21600}
     volumes:
-      - ./app:/app/app
-      - ./run.py:/app/run.py
+      - app_secrets:/app/instance/secrets
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/login')"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/login')"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -31,30 +32,8 @@ services:
         max-file: "10"
 
   upscaler:
-    profiles: ["ai"]
-    build:
-      context: .
-      target: upscaler-cpu-runtime
-    command:
-      - gunicorn
-      - --bind
-      - 0.0.0.0:8765
-      - --workers
-      - "1"
-      - --threads
-      - "2"
-      - --timeout
-      - "600"
-      - --keep-alive
-      - "5"
-      - --worker-class
-      - sync
-      - --reload
-      - --access-logfile
-      - /dev/null
-      - --error-logfile
-      - "-"
-      - run_upscaler:app
+    image: ${UPSCALER_IMAGE:?UPSCALER_IMAGE must be set}
+    pull_policy: always
     environment:
       AI_UPSCALER_HOST: 0.0.0.0
       AI_UPSCALER_PORT: 8765
@@ -74,8 +53,6 @@ services:
       AI_UPSCALER_MAX_WORKERS: ${AI_UPSCALER_MAX_WORKERS:-1}
       AI_UPSCALE_ARTIFACT_TTL_SECONDS: ${AI_UPSCALE_ARTIFACT_TTL_SECONDS:-21600}
     volumes:
-      - ./upscaler_service:/app/upscaler_service
-      - ./run_upscaler.py:/app/run_upscaler.py
       - upscaler_models:/models
       - upscaler_tmp:/tmp/compressify-upscaler
     expose:
@@ -88,7 +65,13 @@ services:
       timeout: 10s
       retries: 10
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
 volumes:
+  app_secrets:
   upscaler_models:
   upscaler_tmp:

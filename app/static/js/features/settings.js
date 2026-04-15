@@ -6,6 +6,7 @@
 import { $, $$ } from '../lib/dom.js';
 import { bus } from '../lib/events.js';
 import * as storage from '../lib/storage.js';
+import { getAIUpscaleHealth } from '../lib/ai-upscale-api.js';
 import {
   state,
   updateSettings,
@@ -35,9 +36,15 @@ const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([type="hid
 const MOBILE_MQ = window.matchMedia('(max-width: 640px)');
 const MAX_RESIZE_DIMENSION = 10000;
 let resizeAspectRatio = null;
-let resizeValidationState = {
+let settingsValidationState = {
   processable: true,
   resize: { valid: true, message: '', width: null, height: null },
+  aiUpscale: { valid: true, message: '' },
+};
+
+const WORKFLOW_LABELS = {
+  optimize: 'Optimize',
+  'ai-upscale': 'AI Upscale',
 };
 
 const MODE_LABELS = {
@@ -58,6 +65,49 @@ const QUALITY_DEFAULTS = {
   high: { auto: 50, webp: 40, jpeg: 60 },
 };
 
+const AI_MODEL_LABELS = {
+  photo: 'Photo',
+  anime: 'Anime',
+};
+
+const AI_QUALITY_DEFAULTS = {
+  webp: 90,
+  jpeg: 92,
+};
+
+const AI_UPSCALE_HEALTH_RETRY_DELAYS_MS = (() => {
+  if (!Array.isArray(window.__AI_UPSCALE_HEALTH_RETRY_DELAYS_MS)) {
+    return [1500, 3000, 5000];
+  }
+  const normalized = window.__AI_UPSCALE_HEALTH_RETRY_DELAYS_MS
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return normalized.length > 0 ? normalized : [1500, 3000, 5000];
+})();
+const AI_UPSCALE_HEALTH_MAX_RETRIES = (() => {
+  const override = Number(window.__AI_UPSCALE_HEALTH_MAX_RETRIES);
+  return Number.isFinite(override) && override > 0 ? override : 24;
+})();
+const AI_UPSCALE_HEALTH_ERROR_RETRY_DELAY_MS = (() => {
+  const override = Number(window.__AI_UPSCALE_HEALTH_ERROR_RETRY_DELAY_MS);
+  return Number.isFinite(override) && override >= 0 ? override : 8000;
+})();
+
+let aiUpscaleHealthState = {
+  loading: false,
+  enabled: false,
+  healthy: false,
+  state: 'disabled',
+  backend: null,
+  workerInstanceId: null,
+  startedAt: null,
+  details: {},
+  reason: 'AI upscaling is unavailable.',
+};
+let aiUpscaleHealthRefreshPromise = null;
+let aiUpscaleHealthRetryTimer = null;
+let aiUpscaleHealthRetryAttempt = 0;
+
 /* ── Initialization ───────────────────────────────────────────────── */
 
 export function initSettings() {
@@ -65,11 +115,13 @@ export function initSettings() {
   if (!sidebar) return;
 
   initSidebar();
+  initWorkflowControl();
   initSectionAccordions();
   initToggleSectionHeaders();
   initCompressionMode();
   initQualitySlider();
   initFormatControl();
+  initAIUpscaleControls();
   initResizeMode();
   initPresets();
   initAspectRatio();
@@ -79,10 +131,13 @@ export function initSettings() {
 
   // Apply persisted state to controls
   syncControlsFromState();
+  void refreshAIUpscaleHealth();
 
   // Listen for external state changes
   bus.on('settings:changed', () => {
+    syncWorkflowMode();
     syncCompressionControls();
+    syncAIUpscaleControls();
     updateSummary();
   });
   bus.on('watermark:logoChanged', () => updateSummary());
@@ -310,6 +365,263 @@ function trapFocus(e) {
     e.preventDefault();
     first.focus();
   }
+}
+
+function getActiveWorkflowMode() {
+  return state.settings.workflow?.mode || 'optimize';
+}
+
+function initWorkflowControl() {
+  const control = $('#workflow-control');
+  if (!control) return;
+
+  initSegmentedControl(control, (value) => {
+    updateSettings('workflow', { mode: value });
+    syncWorkflowMode();
+    if (value === 'ai-upscale') {
+      void refreshAIUpscaleHealth();
+    } else {
+      clearAIUpscaleHealthRetry();
+    }
+  });
+}
+
+function initAIUpscaleControls() {
+  const modelControl = $('#ai-model-control');
+  if (modelControl) {
+    initSegmentedControl(modelControl, (value) => {
+      updateSettings('aiUpscale', { modelPreset: value });
+    });
+  }
+
+  const scaleControl = $('#ai-scale-control');
+  if (scaleControl) {
+    initSegmentedControl(scaleControl, (value) => {
+      updateSettings('aiUpscale', { scale: Number.parseInt(value, 10) });
+    });
+  }
+
+  const formatControl = $('#ai-format-control');
+  if (formatControl) {
+    initSegmentedControl(formatControl, (value) => {
+      const nextQuality = value === 'png'
+        ? null
+        : getAIUpscaleDefaultQuality(value);
+      updateSettings('aiUpscale', {
+        outputFormat: value,
+        quality: nextQuality,
+      });
+      syncAIUpscaleControls();
+    });
+  }
+
+  const slider = $('#ai-quality-slider');
+  const output = $('#ai-quality-value');
+  if (slider && output) {
+    slider.addEventListener('input', () => {
+      output.textContent = slider.value;
+    });
+
+    slider.addEventListener('change', () => {
+      updateSettings('aiUpscale', { quality: Number.parseInt(slider.value, 10) });
+    });
+  }
+}
+
+function syncWorkflowMode() {
+  const mode = getActiveWorkflowMode();
+  document.documentElement.dataset.workflowMode = mode;
+  setSegmentedValue('#workflow-control', mode);
+
+  if (mode !== 'ai-upscale') {
+    clearAIUpscaleHealthRetry();
+    aiUpscaleHealthRetryAttempt = 0;
+  }
+
+  $$('[data-workflow-section]').forEach((section) => {
+    section.classList.toggle('is-hidden', section.dataset.workflowSection !== mode);
+  });
+
+  syncValidationState();
+  updateSummary();
+}
+
+function syncAIUpscaleControls() {
+  const settings = state.settings.aiUpscale || {};
+  const outputFormat = settings.outputFormat || 'png';
+  const quality = outputFormat === 'png'
+    ? null
+    : settings.quality ?? getAIUpscaleDefaultQuality(outputFormat);
+
+  setSegmentedValue('#ai-model-control', settings.modelPreset || 'photo');
+  setSegmentedValue('#ai-scale-control', String(settings.scale || 2));
+  setSegmentedValue('#ai-format-control', outputFormat);
+  toggleHidden('#ai-quality-slider-group', outputFormat === 'png');
+
+  const slider = $('#ai-quality-slider');
+  const output = $('#ai-quality-value');
+  if (slider) {
+    slider.disabled = outputFormat === 'png';
+    if (quality != null) slider.value = quality;
+  }
+  if (output && quality != null) {
+    output.textContent = quality;
+  }
+  syncAIUpscaleStatus();
+}
+
+function syncAIUpscaleStatus() {
+  const el = $('#ai-upscale-status');
+  if (!el) return;
+
+  el.classList.remove('sidebar__ai-status--pending', 'sidebar__ai-status--healthy', 'sidebar__ai-status--error');
+
+  if (aiUpscaleHealthState.loading) {
+    el.classList.add('sidebar__ai-status--pending');
+    el.textContent = aiUpscaleHealthState.reason || 'Checking…';
+  } else if (aiUpscaleHealthState.state === 'starting') {
+    el.classList.add('sidebar__ai-status--pending');
+    el.textContent = aiUpscaleHealthState.reason || 'Starting…';
+  } else if (aiUpscaleHealthState.enabled && aiUpscaleHealthState.healthy) {
+    el.classList.add('sidebar__ai-status--healthy');
+    el.textContent = aiUpscaleHealthState.reason || 'Ready';
+  } else {
+    el.classList.add('sidebar__ai-status--error');
+    el.textContent = aiUpscaleHealthState.reason || 'Unavailable';
+  }
+}
+
+async function refreshAIUpscaleHealth() {
+  if (aiUpscaleHealthRefreshPromise) {
+    return aiUpscaleHealthRefreshPromise;
+  }
+
+  clearAIUpscaleHealthRetry();
+  const preserveStartingStatus = aiUpscaleHealthState.state === 'starting';
+  if (!preserveStartingStatus) {
+    aiUpscaleHealthState = {
+      ...aiUpscaleHealthState,
+      loading: true,
+      reason: 'Checking AI upscaling service…',
+    };
+    syncAIUpscaleStatus();
+    syncValidationState();
+  }
+
+  aiUpscaleHealthRefreshPromise = (async () => {
+    try {
+      const result = await getAIUpscaleHealth();
+      aiUpscaleHealthState = {
+        loading: false,
+        enabled: Boolean(result.enabled),
+        healthy: Boolean(result.healthy),
+        state: result.state || (result.healthy ? 'ready' : 'error'),
+        backend: result.backend || null,
+        workerInstanceId: result.worker_instance_id || null,
+        startedAt: result.started_at || null,
+        details: result.details || {},
+        reason: result.reason || (result.healthy ? 'AI upscaling service ready' : 'AI upscaling is unavailable.'),
+      };
+    } catch (error) {
+      aiUpscaleHealthState = {
+        loading: false,
+        enabled: aiUpscaleHealthState.enabled,
+        healthy: false,
+        state: 'error',
+        backend: null,
+        workerInstanceId: null,
+        startedAt: null,
+        details: {},
+        reason: error.message || 'AI upscaling service is unavailable.',
+      };
+    } finally {
+      aiUpscaleHealthRefreshPromise = null;
+      syncAIUpscaleStatus();
+      syncValidationState();
+      updateAIUpscaleHealthRetry();
+    }
+  })();
+
+  return aiUpscaleHealthRefreshPromise;
+}
+
+function clearAIUpscaleHealthRetry() {
+  if (aiUpscaleHealthRetryTimer) {
+    window.clearTimeout(aiUpscaleHealthRetryTimer);
+    aiUpscaleHealthRetryTimer = null;
+  }
+}
+
+function scheduleAIUpscaleHealthRetry() {
+  if (aiUpscaleHealthRetryTimer || getActiveWorkflowMode() !== 'ai-upscale') {
+    return;
+  }
+
+  if (aiUpscaleHealthRetryAttempt >= AI_UPSCALE_HEALTH_MAX_RETRIES) {
+    aiUpscaleHealthState = {
+      ...aiUpscaleHealthState,
+      loading: false,
+      healthy: false,
+      state: 'error',
+      reason: 'AI service is taking too long to start. Try refreshing the page.',
+    };
+    syncAIUpscaleStatus();
+    syncValidationState();
+    return;
+  }
+
+  const index = Math.min(aiUpscaleHealthRetryAttempt, AI_UPSCALE_HEALTH_RETRY_DELAYS_MS.length - 1);
+  const delay = AI_UPSCALE_HEALTH_RETRY_DELAYS_MS[index];
+  aiUpscaleHealthRetryTimer = window.setTimeout(() => {
+    aiUpscaleHealthRetryTimer = null;
+    aiUpscaleHealthRetryAttempt += 1;
+    void refreshAIUpscaleHealth();
+  }, delay);
+}
+
+function updateAIUpscaleHealthRetry() {
+  if (
+    aiUpscaleHealthState.enabled
+    && !aiUpscaleHealthState.healthy
+    && getActiveWorkflowMode() === 'ai-upscale'
+  ) {
+    if (aiUpscaleHealthState.state === 'starting') {
+      scheduleAIUpscaleHealthRetry();
+      return;
+    }
+    if (aiUpscaleHealthState.state === 'error' && aiUpscaleHealthRetryAttempt === 0) {
+      aiUpscaleHealthRetryAttempt = 1;
+      aiUpscaleHealthRetryTimer = window.setTimeout(() => {
+        aiUpscaleHealthRetryTimer = null;
+        void refreshAIUpscaleHealth();
+      }, AI_UPSCALE_HEALTH_ERROR_RETRY_DELAY_MS);
+      return;
+    }
+  }
+
+  aiUpscaleHealthRetryAttempt = 0;
+  clearAIUpscaleHealthRetry();
+}
+
+function getAIUpscaleDefaultQuality(format) {
+  return AI_QUALITY_DEFAULTS[format] ?? null;
+}
+
+function syncValidationState() {
+  const workflowMode = getActiveWorkflowMode();
+  const aiValid = !aiUpscaleHealthState.loading && aiUpscaleHealthState.enabled && aiUpscaleHealthState.healthy;
+  settingsValidationState.aiUpscale = {
+    valid: aiValid,
+    message: aiUpscaleHealthState.loading
+      ? 'Checking AI upscaling service…'
+      : aiUpscaleHealthState.reason || 'AI upscaling is unavailable.',
+  };
+
+  settingsValidationState.processable = workflowMode === 'ai-upscale'
+    ? aiValid
+    : settingsValidationState.resize.valid;
+
+  bus.emit('settings:validationChanged', settingsValidationState);
 }
 
 /* ── Compression mode segmented control ───────────────────────────── */
@@ -579,6 +891,7 @@ function computeResizeValidation() {
     return {
       processable: true,
       resize: { valid: true, message: '', width: null, height: null },
+      aiUpscale: { ...settingsValidationState.aiUpscale },
     };
   }
 
@@ -587,6 +900,7 @@ function computeResizeValidation() {
     return {
       processable: false,
       resize: { valid: false, message: widthResult.message, width: null, height: null },
+      aiUpscale: { ...settingsValidationState.aiUpscale },
     };
   }
 
@@ -595,6 +909,7 @@ function computeResizeValidation() {
     return {
       processable: false,
       resize: { valid: false, message: heightResult.message, width: null, height: null },
+      aiUpscale: { ...settingsValidationState.aiUpscale },
     };
   }
 
@@ -607,6 +922,7 @@ function computeResizeValidation() {
         width: null,
         height: null,
       },
+      aiUpscale: { ...settingsValidationState.aiUpscale },
     };
   }
 
@@ -618,6 +934,7 @@ function computeResizeValidation() {
       width: widthResult.value,
       height: heightResult.value,
     },
+    aiUpscale: { ...settingsValidationState.aiUpscale },
   };
 }
 
@@ -677,10 +994,13 @@ function persistValidResize(validation) {
 
 function syncResizeValidation({ emit = true, persist = true } = {}) {
   const validation = computeResizeValidation();
-  resizeValidationState = validation;
+  settingsValidationState = {
+    ...settingsValidationState,
+    resize: validation.resize,
+  };
 
   if (persist) {
-    persistValidResize(validation);
+    persistValidResize({ resize: validation.resize });
   }
 
   if (
@@ -695,12 +1015,13 @@ function syncResizeValidation({ emit = true, persist = true } = {}) {
 
   applyResizeValidationState(validation);
   updateSummary();
+  syncValidationState();
 
   if (emit) {
-    bus.emit('settings:validationChanged', validation);
+    bus.emit('settings:validationChanged', settingsValidationState);
   }
 
-  return validation;
+  return settingsValidationState;
 }
 
 /* ── Background removal ──────────────────────────────────────────── */
@@ -753,9 +1074,11 @@ function syncCompressionControls() {
 /* ── Sync controls from persisted state ───────────────────────────── */
 
 function syncControlsFromState() {
-  const { resize, background } = state.settings;
+  const { workflow, aiUpscale, resize, background } = state.settings;
 
+  setSegmentedValue('#workflow-control', workflow?.mode || 'optimize');
   syncCompressionControls();
+  syncAIUpscaleControls();
 
   // Resize
   const isCustom = resize.mode === 'custom';
@@ -780,6 +1103,7 @@ function syncControlsFromState() {
   // Watermark
   syncWatermarkEditor();
 
+  syncWorkflowMode();
   updateSummary();
 }
 
@@ -789,9 +1113,31 @@ function updateSummary() {
   const el = $('#settings-summary');
   if (!el) return;
 
+  const workflowMode = getActiveWorkflowMode();
+  if (workflowMode === 'ai-upscale') {
+    const aiUpscale = state.settings.aiUpscale || {};
+    const parts = [
+      WORKFLOW_LABELS[workflowMode] || 'AI Upscale',
+      AI_MODEL_LABELS[aiUpscale.modelPreset || 'photo'] || 'Photo',
+      `${aiUpscale.scale || 2}x`,
+      FORMAT_LABELS[aiUpscale.outputFormat || 'png'] || 'PNG',
+    ];
+
+    if ((aiUpscale.outputFormat || 'png') !== 'png' && aiUpscale.quality != null) {
+      parts.push(`Q${aiUpscale.quality}`);
+    }
+
+    if (!settingsValidationState.aiUpscale.valid) {
+      parts.push('Unavailable');
+    }
+
+    el.textContent = parts.join(' \u00b7 ');
+    return;
+  }
+
   const { resize, background } = state.settings;
   const resizeEnabled = $('#resize-toggle')?.checked ?? resize.mode === 'custom';
-  const resizeValidation = resizeValidationState;
+  const resizeValidation = settingsValidationState;
   const compress = getEffectiveCompressSettings();
   const parts = [];
 
@@ -878,7 +1224,12 @@ function appendResizeSettings(settings, formData) {
 export async function appendSettingsToFormData(formData) {
   const validation = getCurrentSettingsValidation();
   if (!validation.processable) {
-    throw new Error(validation.resize.message || 'Fix resize settings before processing.');
+    throw new Error(getCurrentValidationMessage());
+  }
+
+  if (getActiveWorkflowMode() === 'ai-upscale') {
+    appendAIUpscaleSettingsToFormData(formData);
+    return;
   }
 
   const settings = getSettings();
@@ -888,15 +1239,41 @@ export async function appendSettingsToFormData(formData) {
   await appendWatermarkSettings(formData);
 }
 
+export function appendAIUpscaleSettingsToFormData(formData) {
+  const settings = state.settings.aiUpscale || {};
+  const outputFormat = settings.outputFormat || 'png';
+  const quality = outputFormat === 'png'
+    ? null
+    : settings.quality ?? getAIUpscaleDefaultQuality(outputFormat);
+
+  formData.append('model_preset', settings.modelPreset || 'photo');
+  formData.append('scale', String(settings.scale || 2));
+  formData.append('output_format', outputFormat);
+  if (quality != null) {
+    formData.append('quality', String(quality));
+  }
+}
+
 export function getCurrentSettingsValidation() {
-  return resizeValidationState;
+  return settingsValidationState;
 }
 
 export function isCurrentSettingsProcessable() {
-  return resizeValidationState.processable;
+  return settingsValidationState.processable;
+}
+
+export function getCurrentValidationMessage() {
+  if (getActiveWorkflowMode() === 'ai-upscale') {
+    return settingsValidationState.aiUpscale.message || 'AI upscaling is unavailable.';
+  }
+  return settingsValidationState.resize.message || 'Fix resize settings before processing.';
 }
 
 export function getCurrentProcessingSnapshot() {
   flushPendingWatermarkEditorUpdates();
   return getProcessingSnapshot();
+}
+
+export function isAIUpscaleMode() {
+  return getActiveWorkflowMode() === 'ai-upscale';
 }

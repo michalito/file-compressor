@@ -102,12 +102,19 @@
                     <svg class="icon" width="18" height="18" aria-hidden="true"><use href="#icon-x"/></svg>
                 </button>
             </div>
+            <div class="sidebar__workflow">
+                <span class="sidebar__workflow-label">Workflow</span>
+                <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="Workflow" id="workflow-control">
+                    <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="optimize">Optimize</button>
+                    <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="ai-upscale">AI Upscale</button>
+                </div>
+            </div>
             <span class="sidebar__summary" id="settings-summary">Lossless &middot; Original size</span>
         </div>
         <div class="sidebar__body" id="settings-body">
 
             <!-- Compression -->
-            <div class="sidebar__section is-open" data-section="compression">
+            <div class="sidebar__section is-open" data-section="compression" data-workflow-section="optimize">
                 <div class="sidebar__section-header-shell">
                     <button type="button" class="sidebar__section-header" aria-expanded="true" aria-controls="section-compression" data-accordion-trigger>
                         <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-zap"/></svg>
@@ -151,8 +158,84 @@
                 </div>
             </div>
 
+            <!-- AI Upscaling -->
+            <div class="sidebar__section is-open is-hidden" data-section="ai-upscale" data-workflow-section="ai-upscale">
+                <div class="sidebar__section-header-shell">
+                    <button type="button" class="sidebar__section-header" aria-expanded="true" aria-controls="section-ai-upscale" data-accordion-trigger>
+                        <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-layers"/></svg>
+                        <span class="sidebar__section-title">AI Upscaling</span>
+                        <svg class="icon sidebar__section-chevron" width="14" height="14" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
+                    </button>
+                    <div class="sidebar__ai-status sidebar__ai-status--pending" id="ai-upscale-status" role="status" aria-live="polite">
+                        Checking…
+                    </div>
+                    <button type="button" class="sidebar__tooltip-trigger sidebar__tooltip-trigger--section" id="ai-upscale-help"
+                            aria-label="Runs Real-ESRGAN through the internal CPU upscaler service. AI upscaling is slower and quality-focused."
+                            data-tooltip="Runs Real-ESRGAN through the internal CPU upscaler service. AI upscaling is slower and quality-focused.">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#icon-info"/></svg>
+                    </button>
+                </div>
+                <div class="sidebar__section-body" id="section-ai-upscale">
+                    <div class="sidebar__ai-card">
+
+                        <div class="sidebar__ai-group sidebar__ai-group--model">
+                            <span class="sidebar__format-label">Model preset</span>
+                            <div class="segmented-control segmented-control--sm sidebar__ai-model-grid" role="radiogroup" aria-label="AI model preset" id="ai-model-control">
+                                <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="photo">
+                                    <span class="sidebar__ai-model-icon" aria-hidden="true">
+                                        <svg class="icon" width="14" height="14"><use href="#icon-image"/></svg>
+                                    </span>
+                                    <span class="sidebar__ai-model-name">Photo</span>
+                                    <span class="sidebar__ai-model-desc">Real-world images</span>
+                                </button>
+                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="anime">
+                                    <span class="sidebar__ai-model-icon" aria-hidden="true">
+                                        <svg class="icon" width="14" height="14"><use href="#icon-layers"/></svg>
+                                    </span>
+                                    <span class="sidebar__ai-model-name">Anime</span>
+                                    <span class="sidebar__ai-model-desc">Illustrations &amp; animation</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="sidebar__ai-group sidebar__ai-group--scale">
+                            <span class="sidebar__format-label">Scale</span>
+                            <div class="segmented-control segmented-control--sm sidebar__ai-scale-pills" role="radiogroup" aria-label="AI upscale scale" id="ai-scale-control">
+                                <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="2">2x</button>
+                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="4">4x</button>
+                            </div>
+                        </div>
+
+                        <div class="sidebar__ai-group sidebar__ai-group--format">
+                            <span class="sidebar__format-label">Output format</span>
+                            <div class="segmented-control segmented-control--sm" role="radiogroup" aria-label="AI upscale output format" id="ai-format-control">
+                                <button type="button" class="segmented-control__item is-active" role="radio" aria-checked="true" data-value="png">PNG</button>
+                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="webp">WebP</button>
+                                <button type="button" class="segmented-control__item" role="radio" aria-checked="false" data-value="jpeg">JPEG</button>
+                            </div>
+                        </div>
+
+                        <div class="quality-slider is-hidden" id="ai-quality-slider-group">
+                            <div class="quality-slider__header">
+                                <label class="quality-slider__label" for="ai-quality-slider">Quality</label>
+                                <output class="quality-slider__value" id="ai-quality-value" for="ai-quality-slider">90</output>
+                            </div>
+                            <input type="range" class="quality-slider__input" id="ai-quality-slider" min="1" max="100" value="90">
+                            <div class="quality-slider__range-labels">
+                                <span>Smaller file</span>
+                                <span>Higher fidelity</span>
+                            </div>
+                        </div>
+
+                        <p class="sidebar__hint sidebar__ai-hint-integrated" id="ai-upscale-hint">
+                            Transparency is preserved in PNG and WebP output.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Resize -->
-            <div class="sidebar__section" data-section="resize">
+            <div class="sidebar__section" data-section="resize" data-workflow-section="optimize">
                 <div class="sidebar__section-header sidebar__section-header--static sidebar__section-header--toggleable" data-toggle-checkbox="resize-toggle">
                     <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-maximize"/></svg>
                     <span class="sidebar__section-title">Resize</span>
@@ -214,7 +297,7 @@
             </div>
 
             <!-- Background -->
-            <div class="sidebar__section" data-section="background">
+            <div class="sidebar__section" data-section="background" data-workflow-section="optimize">
                 <div class="sidebar__section-header sidebar__section-header--static sidebar__section-header--toggleable" data-toggle-checkbox="background-toggle">
                     <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-image"/></svg>
                     <span class="sidebar__section-title">Background Removal</span>
@@ -232,7 +315,7 @@
             </div>
 
             <!-- Watermark -->
-            <div class="sidebar__section" data-section="watermark">
+            <div class="sidebar__section" data-section="watermark" data-workflow-section="optimize">
                 <div class="sidebar__section-header sidebar__section-header--static sidebar__section-header--toggleable" data-toggle-checkbox="watermark-toggle">
                     <svg class="icon sidebar__section-icon" width="16" height="16" aria-hidden="true"><use href="#icon-type"/></svg>
                     <span class="sidebar__section-title">Watermark</span>

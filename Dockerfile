@@ -1,46 +1,87 @@
-# Stage 1: Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim AS web-builder
 
-# Set work directory
 WORKDIR /app
-
 ENV U2NET_HOME=/opt/rembg
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libheif-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
 COPY requirements.txt .
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Preload the default rembg model into the image without creating a long-lived runtime session.
 RUN mkdir -p "${U2NET_HOME}" && \
     /opt/venv/bin/python -c "from rembg import new_session; new_session()"
 
-# Stage 2: Production stage
-FROM python:3.11-slim
 
-# Set work directory
+FROM python:3.11-slim AS upscaler-builder
+
 WORKDIR /app
 
+COPY requirements-upscaler.txt .
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements-upscaler.txt
+
+
+FROM python:3.11-slim AS upscaler-cpu-runtime
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libheif1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=upscaler-builder /opt/venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+RUN useradd -m appuser && \
+    mkdir -p /models /tmp/compressify-upscaler && \
+    chown -R appuser:appuser /app /models /tmp/compressify-upscaler
+
+COPY upscaler_service upscaler_service/
+COPY run_upscaler.py .
+
+USER appuser
+
+VOLUME /models
+VOLUME /tmp/compressify-upscaler
+
+EXPOSE 8765
+
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:8765", \
+     "--workers", "1", \
+     "--threads", "2", \
+     "--timeout", "600", \
+     "--keep-alive", "5", \
+     "--worker-class", "sync", \
+     "--access-logfile", "/dev/null", \
+     "--error-logfile", "-", \
+     "run_upscaler:app"]
+
+
+FROM python:3.11-slim AS web-runtime
+
+WORKDIR /app
 ENV U2NET_HOME=/opt/rembg
 
-# Install runtime dependencies and dos2unix
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libzbar0 \
     libheif1 \
     dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /opt/rembg /opt/rembg
+COPY --from=web-builder /opt/venv /opt/venv
+COPY --from=web-builder /opt/rembg /opt/rembg
 
-# Set environment variables
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -49,7 +90,6 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app \
     U2NET_HOME=/opt/rembg
 
-# Create non-root user and secure directories
 RUN useradd -m appuser && \
     chown -R appuser:appuser /app && \
     mkdir -p /app/instance/secrets && \
@@ -58,30 +98,24 @@ RUN useradd -m appuser && \
     chmod -R a+rX /opt/rembg && \
     chmod 700 /app/instance/secrets
 
-# Copy application code
 COPY app app/
 COPY run.py .
 COPY VERSION .
 
-# Copy and prepare entrypoint script
 COPY docker-entrypoint.sh /app/
 RUN dos2unix /app/docker-entrypoint.sh && \
     chmod +x /app/docker-entrypoint.sh && \
     chown appuser:appuser /app/docker-entrypoint.sh
 
-# Ensure proper permissions
 RUN mkdir -p instance/temp && \
     chown -R appuser:appuser instance && \
     chmod 644 app/compression/*.py && \
     chmod 644 app/auth.py
 
-# Switch to non-root user
 USER appuser
 
-# Create a mount point for secrets
 VOLUME /app/instance/secrets
 
-# Expose port
 EXPOSE 8000
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
@@ -92,7 +126,6 @@ CMD ["gunicorn", \
      "--timeout", "120", \
      "--keep-alive", "5", \
      "--worker-class", "sync", \
-     "--worker-connections", "1000", \
      "--preload", \
      "--access-logfile", "/dev/null", \
      "--error-logfile", "-", \

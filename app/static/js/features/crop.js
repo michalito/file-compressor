@@ -130,6 +130,10 @@ function initRatioControl() {
 export function openCropModal(fileId) {
   const entry = state.files.get(fileId);
   if (!entry?.processedData) return;
+  if (!entry.processedData.data) {
+    showToast({ message: 'This result cannot be cropped. Retry the image in Optimize mode.', type: 'warning' });
+    return;
+  }
 
   currentFileId = fileId;
   currentRotation = 0;

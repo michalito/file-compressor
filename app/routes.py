@@ -1,10 +1,24 @@
 import base64
 import io
 
-from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session
+from flask import Blueprint, render_template, request, jsonify, send_file, current_app, redirect, url_for, session, Response, stream_with_context
 from PIL import Image
 
 from .compression import ImageCompressor, ImageValidationError, BackgroundRemovalError
+from .ai_upscale import (
+    AIUpscalerError,
+    create_ai_job,
+    delete_ai_job,
+    get_ai_max_upload_bytes,
+    iter_ai_stream,
+    get_ai_health,
+    get_ai_job,
+    cancel_ai_job,
+    open_ai_artifact_stream,
+    open_ai_download_all_stream,
+    parse_ai_upscale_settings,
+    validate_ai_upscale_upload,
+)
 from .auth import RateLimitExceeded, login_required
 from .validators import (
     validate_file, validate_compression_mode, validate_resize_mode,
@@ -14,6 +28,7 @@ from .validators import (
     validate_watermark_text, validate_watermark_color, validate_watermark_layer_options,
     validate_watermark_logo, validate_watermark_qr_url, validate_watermark_qr_image,
     MAX_WATERMARK_IMAGE_PIXELS,
+    is_safe_ai_identifier,
     parse_boolean_form_value, parse_optional_int_form_value,
 )
 from .forms import LoginForm
@@ -38,6 +53,30 @@ FORMAT_EXTENSIONS = {
     'WEBP': '.webp',
     'TIFF': '.tiff'
 }
+
+SAFE_AI_IDENTIFIER_ERROR = {'error': 'Invalid AI upscaling identifier.'}
+
+
+def _proxy_ai_stream_response(stream, *, as_attachment: bool, default_name: str):
+    filename = stream.filename or default_name
+    response = Response(
+        stream_with_context(iter_ai_stream(stream)),
+        mimetype=stream.content_type or 'application/octet-stream',
+        direct_passthrough=True,
+    )
+    if stream.content_length is not None:
+        response.content_length = stream.content_length
+    response.headers['Cache-Control'] = 'no-store'
+    if as_attachment:
+        response.headers.set('Content-Disposition', 'attachment', filename=filename)
+    response.call_on_close(stream.close)
+    return response
+
+
+def _validate_ai_identifier(identifier: str):
+    if not is_safe_ai_identifier((identifier or '').strip()):
+        return jsonify(SAFE_AI_IDENTIFIER_ERROR), 400
+    return None
 
 
 def _load_rgba_image(file):
@@ -318,6 +357,153 @@ def process_image():
     except Exception as e:
         current_app.logger.exception("Processing failed during /process")
         return jsonify({'error': 'Processing failed'}), 500
+
+
+@main.route('/ai-upscale/health', methods=['GET'])
+@login_required
+def ai_upscale_health():
+    try:
+        return jsonify(get_ai_health())
+    except AIUpscalerError as e:
+        payload = {
+            'enabled': bool(current_app.config.get('AI_UPSCALER_ENABLED')),
+            'healthy': False,
+            'state': 'error',
+            'backend': None,
+            'reason': e.message,
+            'details': {},
+        }
+        payload.update(e.payload)
+        return jsonify(payload), e.status_code
+
+
+def _build_ai_upscale_error_payload(error: AIUpscalerError) -> dict:
+    payload = {
+        'error': error.payload.get('user_message') or error.message,
+    }
+    payload.update(error.payload)
+    return payload
+
+
+@main.route('/ai-upscale/jobs', methods=['POST'])
+@login_required
+def ai_upscale_create_job():
+    if not current_app.config.get('AI_UPSCALER_ENABLED'):
+        return jsonify({
+            'error': 'AI upscaling is disabled in configuration.',
+            'code': 'ai_upscale_disabled',
+        }), 503
+
+    file = request.files.get('file')
+    is_valid, error_msg = validate_file(file)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    try:
+        settings = parse_ai_upscale_settings(request.form)
+        file.stream.seek(0)
+        image_bytes = file.stream.read(get_ai_max_upload_bytes() + 1)
+        validate_ai_upscale_upload(file, image_bytes, settings)
+        result = create_ai_job(
+            file_bytes=image_bytes,
+            filename=file.filename,
+            content_type=file.mimetype,
+            settings=settings,
+        )
+        return jsonify(result), 202
+    except AIUpscalerError as e:
+        return jsonify(_build_ai_upscale_error_payload(e)), e.status_code
+
+
+@main.route('/ai-upscale/jobs/<job_id>', methods=['GET'])
+@login_required
+def ai_upscale_get_job(job_id):
+    invalid = _validate_ai_identifier(job_id)
+    if invalid:
+        return invalid
+    try:
+        return jsonify(get_ai_job(job_id))
+    except AIUpscalerError as e:
+        return jsonify(_build_ai_upscale_error_payload(e)), e.status_code
+
+
+@main.route('/ai-upscale/jobs/<job_id>/cancel', methods=['POST'])
+@login_required
+def ai_upscale_cancel_job(job_id):
+    invalid = _validate_ai_identifier(job_id)
+    if invalid:
+        return invalid
+    try:
+        return jsonify(cancel_ai_job(job_id))
+    except AIUpscalerError as e:
+        return jsonify(_build_ai_upscale_error_payload(e)), e.status_code
+
+
+@main.route('/ai-upscale/jobs/<job_id>', methods=['DELETE'])
+@login_required
+def ai_upscale_delete_job(job_id):
+    invalid = _validate_ai_identifier(job_id)
+    if invalid:
+        return invalid
+    try:
+        return jsonify(delete_ai_job(job_id))
+    except AIUpscalerError as e:
+        return jsonify(_build_ai_upscale_error_payload(e)), e.status_code
+
+
+@main.route('/ai-upscale/artifacts/<artifact_id>/preview', methods=['GET'])
+@login_required
+def ai_upscale_preview_artifact(artifact_id):
+    invalid = _validate_ai_identifier(artifact_id)
+    if invalid:
+        return invalid
+    try:
+        stream = open_ai_artifact_stream(artifact_id, kind='preview')
+        return _proxy_ai_stream_response(stream, as_attachment=False, default_name=f'{artifact_id}-preview')
+    except AIUpscalerError as e:
+        return jsonify(_build_ai_upscale_error_payload(e)), e.status_code
+
+
+@main.route('/ai-upscale/artifacts/<artifact_id>/download', methods=['GET'])
+@login_required
+def ai_upscale_download_artifact(artifact_id):
+    invalid = _validate_ai_identifier(artifact_id)
+    if invalid:
+        return invalid
+    try:
+        stream = open_ai_artifact_stream(artifact_id, kind='download')
+        return _proxy_ai_stream_response(stream, as_attachment=True, default_name=f'{artifact_id}-upscaled')
+    except AIUpscalerError as e:
+        return jsonify(_build_ai_upscale_error_payload(e)), e.status_code
+
+
+@main.route('/ai-upscale/download-all', methods=['POST'])
+@login_required
+def ai_upscale_download_all():
+    data = request.json or {}
+    artifacts = data.get('artifacts')
+    if not isinstance(artifacts, list) or not artifacts:
+        return jsonify({'error': 'No AI upscaled artifacts provided'}), 400
+
+    normalized_artifacts = []
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            return jsonify({'error': 'Invalid AI artifact list'}), 400
+        artifact_id = (artifact.get('artifact_id') or '').strip()
+        filename = sanitize_filename((artifact.get('filename') or '').strip())
+        if not artifact_id or not filename:
+            return jsonify({'error': 'Each AI artifact requires artifact_id and filename'}), 400
+        if not is_safe_ai_identifier(artifact_id):
+            return jsonify(SAFE_AI_IDENTIFIER_ERROR), 400
+        normalized_artifacts.append((artifact_id, filename))
+    try:
+        stream = open_ai_download_all_stream(
+            [{'artifact_id': artifact_id, 'filename': filename} for artifact_id, filename in normalized_artifacts]
+        )
+        default_name = normalized_artifacts[0][1] if len(normalized_artifacts) == 1 else 'ai_upscaled_images.zip'
+        return _proxy_ai_stream_response(stream, as_attachment=True, default_name=default_name)
+    except AIUpscalerError as e:
+        return jsonify(_build_ai_upscale_error_payload(e)), e.status_code
 
 
 @main.route('/download', methods=['POST'])

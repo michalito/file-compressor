@@ -5,17 +5,22 @@ import { $, createElement, downloadBlob, base64ToUint8Array } from '../lib/dom.j
 import { bus } from '../lib/events.js';
 import { postJSON } from '../lib/api.js';
 import { state, clearAllFiles, updateFile } from '../state/app-state.js';
-import { processTile } from './image-tile.js';
+import { cleanupRemoteResult, processTile } from './image-tile.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 import { showConfirm } from '../components/confirm.js';
 import {
   getCurrentProcessingSnapshot,
   getCurrentSettingsValidation,
+  getCurrentValidationMessage,
   isCurrentSettingsProcessable,
+  isAIUpscaleMode,
 } from './settings.js';
+import { downloadAIArtifact, downloadAIArtifacts } from '../lib/ai-upscale-api.js';
+import { ensureDownloadPayload } from '../lib/download-payload.js';
 
-const CHUNK_SIZE = 5;
+const OPTIMIZE_BATCH_CHUNK_SIZE = 5;
+const AI_UPSCALE_BATCH_CHUNK_SIZE = 1;
 const RETRYABLE_STATUSES = new Set(['pending', 'error', 'cancelled']);
 
 let processing = false;
@@ -61,6 +66,8 @@ export function initBatch() {
         activeBatch.cancelled = true;
         activeBatch.suppressSummary = true;
       }
+
+      await Promise.allSettled([...state.files.keys()].map((fileId) => cleanupRemoteResult(fileId)));
       clearAllFiles();
     });
   }
@@ -171,7 +178,7 @@ function showResizeValidationToast() {
   if (validation.processable) return;
 
   showToast({
-    message: validation.resize.message || 'Fix resize settings before processing files.',
+    message: getCurrentValidationMessage(),
     type: 'warning',
     duration: 5000,
   });
@@ -237,7 +244,7 @@ async function drainQueue() {
 
   try {
     while (queue.length > 0 && !controller.signal.aborted) {
-      const chunk = dequeueChunk(CHUNK_SIZE);
+      const chunk = dequeueChunk(getBatchChunkSize());
       await Promise.all(chunk.map((fileId) => processQueuedFile(fileId, controller.signal)));
     }
 
@@ -256,6 +263,10 @@ async function drainQueue() {
       void drainQueue();
     }
   }
+}
+
+function getBatchChunkSize() {
+  return isAIUpscaleMode() ? AI_UPSCALE_BATCH_CHUNK_SIZE : OPTIMIZE_BATCH_CHUNK_SIZE;
 }
 
 function dequeueChunk(size) {
@@ -520,7 +531,7 @@ function updateReprocessVisibility() {
 
   btn.classList.toggle('is-hidden', !needsReprocess);
   btn.disabled = !processable;
-  btn.title = !processable ? 'Fix resize settings before reprocessing.' : '';
+  btn.title = !processable ? getCurrentValidationMessage() : '';
 }
 
 async function retryIncomplete() {
@@ -536,9 +547,16 @@ async function retryIncomplete() {
 
   if (incompleteIds.length === 0) return;
 
+  await Promise.allSettled(incompleteIds.map((fileId) => cleanupRemoteResult(fileId)));
+
   for (const fileId of incompleteIds) {
     resetTileForRetry(fileId);
-    updateFile(fileId, { status: 'pending', errorMessage: null });
+    updateFile(fileId, {
+      status: 'pending',
+      errorMessage: null,
+      artifactRefs: null,
+      upscaleJob: null,
+    });
   }
 
   enqueueForProcessing(incompleteIds);
@@ -561,8 +579,15 @@ async function reprocessAll() {
 
   if (doneIds.length === 0) return;
 
+  await Promise.allSettled(doneIds.map((fileId) => cleanupRemoteResult(fileId)));
+
   for (const fileId of doneIds) {
-    updateFile(fileId, { status: 'pending', processedWithSettings: null });
+    updateFile(fileId, {
+      status: 'pending',
+      processedWithSettings: null,
+      artifactRefs: null,
+      upscaleJob: null,
+    });
     const tile = document.querySelector(`[data-file-id="${fileId}"]`);
     if (!tile) continue;
 
@@ -574,7 +599,7 @@ async function reprocessAll() {
     if (savingsEl) savingsEl.classList.add('is-hidden');
 
     const badges = tile.querySelector('.tile__status-badges');
-    if (badges) badges.innerHTML = '';
+    if (badges) badges.replaceChildren();
 
     const downloadBtn = tile.querySelector('.tile__download-btn');
     if (downloadBtn) {
@@ -598,8 +623,15 @@ async function downloadAll() {
   if (processedEntries.length === 1) {
     const [, entry] = processedEntries[0];
     try {
+      const payload = ensureDownloadPayload(entry);
+      if (payload.kind === 'artifact') {
+        const blob = await downloadAIArtifact(payload.artifactId);
+        downloadBlob(blob, entry.processedData.filename);
+        return;
+      }
+
       const response = await postJSON('/download', {
-        compressed_data: entry.processedData.data,
+        compressed_data: payload.data,
         filename: entry.processedData.filename,
       });
       const blob = await response.blob();
@@ -619,12 +651,36 @@ async function downloadAll() {
     globalProgress.show();
     globalProgress.setIndeterminate();
 
+    const allAIResults = processedEntries.every(([, entry]) => entry.artifactRefs?.download?.artifact_id);
+    if (allAIResults) {
+      const blob = await downloadAIArtifacts(
+        processedEntries.map(([, entry]) => ({
+          artifact_id: entry.artifactRefs.download.artifact_id,
+          filename: entry.processedData.filename,
+        })),
+      );
+      downloadBlob(blob, 'ai_upscaled_images.zip');
+      showToast({ message: `Downloaded ${processedEntries.length} images as ZIP`, type: 'success' });
+      return;
+    }
+
     const zip = new JSZip();
 
+    let downloaded = 0;
+    const total = processedEntries.length;
     for (const [, entry] of processedEntries) {
-      const binaryData = base64ToUint8Array(entry.processedData.data);
-      zip.file(entry.processedData.filename, binaryData);
+      globalProgress.setProgress(downloaded / total);
+      const payload = ensureDownloadPayload(entry);
+      if (payload.kind === 'artifact') {
+        const blob = await downloadAIArtifact(payload.artifactId);
+        zip.file(entry.processedData.filename, await blob.arrayBuffer());
+      } else {
+        const binaryData = base64ToUint8Array(payload.data);
+        zip.file(entry.processedData.filename, binaryData);
+      }
+      downloaded += 1;
     }
+    globalProgress.setProgress(1);
 
     const content = await zip.generateAsync({
       type: 'blob',

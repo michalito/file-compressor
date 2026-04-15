@@ -2,6 +2,7 @@ import io
 import re
 
 from PIL import Image
+from app.ai_upscale import AIUpscaleStream
 
 
 UNAUTHORIZED_BODY = {
@@ -21,6 +22,16 @@ RATE_LIMIT_BODY = {
     'code': 'rate_limit_exceeded',
 }
 
+AI_PREVIEW_RATE_LIMIT_BODY = {
+    'error': 'AI preview rate limit exceeded. Try again shortly.',
+    'code': 'rate_limit_exceeded',
+}
+
+AI_DOWNLOAD_RATE_LIMIT_BODY = {
+    'error': 'AI download rate limit exceeded. Try again shortly.',
+    'code': 'rate_limit_exceeded',
+}
+
 
 def api_headers():
     return {
@@ -34,6 +45,15 @@ def make_image_bytes():
     buffer = io.BytesIO()
     image.save(buffer, format='PNG')
     return buffer.getvalue()
+
+
+def make_ai_stream(payload=b'preview'):
+    return AIUpscaleStream(
+        response=io.BytesIO(payload),
+        content_type='image/png',
+        filename='preview.png',
+        content_length=len(payload),
+    )
 
 
 def login_csrf_token(client):
@@ -103,6 +123,36 @@ def test_process_rate_limit_returns_api_contract(app, auth_client):
 
     assert limited.status_code == 429
     assert limited.get_json() == RATE_LIMIT_BODY
+
+
+def test_ai_preview_rate_limit_returns_api_contract(app, auth_client, monkeypatch):
+    monkeypatch.setattr('app.routes.open_ai_artifact_stream', lambda *args, **kwargs: make_ai_stream())
+    app.view_functions['main.ai_upscale_preview_artifact'] = app.limiter.limit(
+        '1 per minute'
+    )(app.view_functions['main.ai_upscale_preview_artifact'])
+
+    response = auth_client.get('/ai-upscale/artifacts/job-1/preview', headers=api_headers())
+    assert response.status_code == 200
+
+    limited = auth_client.get('/ai-upscale/artifacts/job-1/preview', headers=api_headers())
+
+    assert limited.status_code == 429
+    assert limited.get_json() == AI_PREVIEW_RATE_LIMIT_BODY
+
+
+def test_ai_download_rate_limit_returns_api_contract(app, auth_client, monkeypatch):
+    monkeypatch.setattr('app.routes.open_ai_artifact_stream', lambda *args, **kwargs: make_ai_stream())
+    app.view_functions['main.ai_upscale_download_artifact'] = app.limiter.limit(
+        '1 per minute'
+    )(app.view_functions['main.ai_upscale_download_artifact'])
+
+    response = auth_client.get('/ai-upscale/artifacts/job-1/download', headers=api_headers())
+    assert response.status_code == 200
+
+    limited = auth_client.get('/ai-upscale/artifacts/job-1/download', headers=api_headers())
+
+    assert limited.status_code == 429
+    assert limited.get_json() == AI_DOWNLOAD_RATE_LIMIT_BODY
 
 
 def test_login_lockout_message_after_five_failed_attempts(client):

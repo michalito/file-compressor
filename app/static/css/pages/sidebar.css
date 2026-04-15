@@ -105,6 +105,20 @@
   line-height: var(--leading-normal);
 }
 
+.sidebar__workflow {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.sidebar__workflow-label {
+  font-size: 0.6875rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
 /* ── Body (scrollable, thin visible scrollbar) ───────────────── */
 .sidebar__body {
   flex: 1;
@@ -528,6 +542,204 @@
   color: var(--color-text-secondary);
   margin-bottom: var(--space-2);
   display: block;
+}
+
+.sidebar__ai-card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ── AI Status: inline dot in section header ──────────────────── */
+.sidebar__section-header-shell .sidebar__ai-status {
+  min-height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.625rem;
+  font-weight: var(--weight-normal);
+  color: var(--color-text-tertiary);
+  line-height: 1;
+  border-radius: 0;
+  margin-left: auto;
+  margin-right: var(--space-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.sidebar__section-header-shell .sidebar__ai-status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background-color: var(--color-border-hover);
+  transition: background-color var(--transition-fast);
+}
+
+.sidebar__section-header-shell .sidebar__ai-status--pending::before {
+  background-color: var(--color-warning);
+  animation: ai-status-pulse 1.5s ease-in-out infinite;
+}
+
+.sidebar__section-header-shell .sidebar__ai-status--healthy {
+  color: var(--color-text-tertiary);
+}
+
+.sidebar__section-header-shell .sidebar__ai-status--healthy::before {
+  background-color: var(--color-success);
+}
+
+.sidebar__section-header-shell .sidebar__ai-status--error {
+  color: var(--color-text-tertiary);
+}
+
+.sidebar__section-header-shell .sidebar__ai-status--error::before {
+  background-color: var(--color-warning);
+}
+
+@keyframes ai-status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── AI Group spacing (replaces divider lines) ────────────────── */
+.sidebar__ai-group {
+  margin-top: var(--space-3);
+}
+
+/* ── Model Preset: card grid ──────────────────────────────────── */
+.sidebar__ai-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  border: none;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+
+.sidebar__ai-model-grid .segmented-control__item {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  text-align: center;
+  min-height: auto;
+  white-space: normal;
+  line-height: var(--leading-tight);
+  transition: all var(--transition-fast);
+}
+
+.sidebar__ai-model-grid .segmented-control__item:hover:not(.is-active) {
+  background-color: var(--color-primary-subtle);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+}
+
+.sidebar__ai-model-grid .segmented-control__item.is-active {
+  background-color: var(--color-primary-subtle);
+  border-color: var(--color-primary);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+  box-shadow: 0 0 0 1px var(--color-primary);
+  z-index: auto;
+}
+
+/* Inner elements of model cards */
+.sidebar__ai-model-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-background);
+  color: var(--color-text-tertiary);
+  transition: all var(--transition-fast);
+}
+
+.sidebar__ai-model-grid .segmented-control__item.is-active .sidebar__ai-model-icon {
+  background-color: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface));
+  color: var(--color-primary);
+}
+
+.sidebar__ai-model-name {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.sidebar__ai-model-desc {
+  font-size: 0.625rem;
+  color: var(--color-text-tertiary);
+  line-height: var(--leading-tight);
+}
+
+.sidebar__ai-model-grid .segmented-control__item.is-active .sidebar__ai-model-name {
+  color: var(--color-primary);
+}
+
+.sidebar__ai-model-grid .segmented-control__item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* ── Scale: inline pill pair ──────────────────────────────────── */
+.sidebar__ai-group--scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.sidebar__ai-group--scale .sidebar__format-label {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.sidebar__ai-scale-pills {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.sidebar__ai-scale-pills .segmented-control__item {
+  padding: var(--space-1) var(--space-3);
+  min-width: 40px;
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar__ai-scale-pills .segmented-control__item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* ── Output Format: softer active state inside ai-card ────────── */
+.sidebar__ai-card .sidebar__ai-group--format .segmented-control__item.is-active {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
+  border-right-color: var(--color-border);
+  box-shadow: none;
+}
+
+/* ── Hint: integrated footnote ────────────────────────────────── */
+.sidebar__ai-card .sidebar__ai-hint-integrated {
+  font-size: 0.625rem;
+  color: var(--color-text-tertiary);
+  padding: 0;
+  margin-top: var(--space-2);
+  line-height: var(--leading-relaxed);
 }
 
 /* ── Sub-group Divider (visual separator within a section body) ── */

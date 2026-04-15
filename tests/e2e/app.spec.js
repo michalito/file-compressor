@@ -48,6 +48,10 @@ async function enableResize(page) {
   await page.locator('label[for="resize-toggle"]').click();
 }
 
+async function enableAIUpscale(page) {
+  await page.locator('#workflow-control [data-value="ai-upscale"]').click();
+}
+
 async function openWatermarkTab(page, layer) {
   await page.locator(`#watermark-tab-${layer}`).click();
 }
@@ -56,6 +60,7 @@ async function setRangeValue(page, selector, value) {
   await page.locator(selector).evaluate((input, nextValue) => {
     input.value = String(nextValue);
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   }, value);
 }
 
@@ -98,6 +103,244 @@ function mockProcessResponse({
       },
     }),
   };
+}
+
+function makeAIUpscaleJobResult({
+  jobId = 'job-1',
+  filename = 'upscaled.png',
+  modelPreset = 'photo',
+  scale = 2,
+  format = 'PNG',
+  originalDimensions = [300, 300],
+  finalDimensions = [originalDimensions[0] * scale, originalDimensions[1] * scale],
+  warnings = [],
+  workerInstanceId = 'worker-a',
+} = {}) {
+  const resolvedFormat = String(format).toUpperCase();
+  return {
+    job_id: jobId,
+    status: 'done',
+    phase: 'done',
+    progress: 100,
+    queue_position: null,
+    worker_instance_id: workerInstanceId,
+    result: {
+      filename,
+      warnings,
+      metadata: {
+        original_size: fixtureBuffer.length,
+        compressed_size: fixtureBuffer.length + (scale === 4 ? 256 : 128),
+        original_dimensions: originalDimensions,
+        final_dimensions: finalDimensions,
+        compression_ratio: 100,
+        format: resolvedFormat,
+        original_format: 'PNG',
+        workflow: 'ai-upscale',
+        upscale: {
+          model_preset: modelPreset,
+          model_name: modelPreset === 'anime'
+            ? 'RealESRGAN_x4plus_anime_6B'
+            : (scale === 2 ? 'RealESRGAN_x2plus' : 'RealESRGAN_x4plus'),
+          backend_model_name: modelPreset === 'anime'
+            ? 'RealESRGAN_x4plus_anime_6B'
+            : (scale === 2 ? 'RealESRGAN_x2plus' : 'RealESRGAN_x4plus'),
+          requested_scale: scale,
+          native_scale: modelPreset === 'anime' ? 4 : scale,
+          downscaled_from_native: modelPreset === 'anime' ? scale !== 4 : false,
+        },
+      },
+      artifacts: {
+        preview: {
+          artifact_id: `${jobId}-preview`,
+          filename: `${jobId}-preview.png`,
+        },
+        download: {
+          artifact_id: `${jobId}-download`,
+          filename,
+        },
+      },
+    },
+  };
+}
+
+async function mockAIUpscaleService(page, {
+  health = {
+    enabled: true,
+    healthy: true,
+    state: 'ready',
+    backend: 'torch-cpu',
+    worker_instance_id: 'worker-a',
+    started_at: '2026-04-13T10:00:00+00:00',
+    reason: 'AI upscaling service ready',
+    details: { cached_models: [], cpu_threads: 4 },
+  },
+  jobs = [],
+  previewBuffer = fixtureBuffer,
+  downloadArtifactBuffer = fixtureBuffer,
+  downloadAllBody = Buffer.from('zipdata'),
+} = {}) {
+  const state = {
+    healthCount: 0,
+    createBodies: [],
+    createCount: 0,
+    pollCounts: new Map(),
+    cancelledJobIds: [],
+    deletedJobIds: [],
+    deletedJobHeaders: [],
+    previewArtifactIds: [],
+    downloadArtifactIds: [],
+    downloadAllBodies: [],
+  };
+  const jobConfigs = new Map();
+
+  await page.route('**/ai-upscale/**', async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const method = request.method();
+
+    if (pathname === '/ai-upscale/health') {
+      state.healthCount += 1;
+      const { httpStatus = 200, ...body } = health;
+      await route.fulfill({
+        status: httpStatus,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      });
+      return;
+    }
+
+    if (pathname === '/ai-upscale/jobs' && method === 'POST') {
+      const nextIndex = state.createCount;
+      const config = jobs[nextIndex] || {};
+      const jobId = config.id || `job-${nextIndex + 1}`;
+      state.createCount += 1;
+      state.createBodies.push(request.postData() || '');
+      const createStatus = config.createHttpStatus || 202;
+
+      if (createStatus >= 400) {
+        await route.fulfill({
+          status: createStatus,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: config.createError || `AI upscale create failed (${createStatus})`,
+            ...(config.createResponse || {}),
+          }),
+        });
+        return;
+      }
+
+      jobConfigs.set(jobId, {
+        ...config,
+        sequence: config.sequence || [
+          { job_id: jobId, status: 'processing' },
+          makeAIUpscaleJobResult({ jobId, ...(config.result || {}) }),
+        ],
+      });
+
+      await route.fulfill({
+        status: createStatus,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          job_id: jobId,
+          status: config.initialStatus || 'queued',
+          phase: config.initialPhase || 'queued',
+          progress: config.initialProgress || 0,
+          queue_position: config.initialQueuePosition || 1,
+          worker_instance_id: health.worker_instance_id || 'worker-a',
+          ...(config.createResponse || {}),
+        }),
+      });
+      return;
+    }
+
+    const cancelMatch = pathname.match(/^\/ai-upscale\/jobs\/([^/]+)\/cancel$/);
+    if (cancelMatch && method === 'POST') {
+      const [, jobId] = cancelMatch;
+      state.cancelledJobIds.push(jobId);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ job_id: jobId, status: 'cancelled' }),
+      });
+      return;
+    }
+
+    const jobMatch = pathname.match(/^\/ai-upscale\/jobs\/([^/]+)$/);
+    if (jobMatch) {
+      const [, jobId] = jobMatch;
+
+      if (method === 'DELETE') {
+        state.deletedJobIds.push(jobId);
+        state.deletedJobHeaders.push(request.headers());
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ job_id: jobId, status: 'deleted' }),
+        });
+        return;
+      }
+
+      if (method === 'GET') {
+        const config = jobConfigs.get(jobId) || {
+          sequence: [makeAIUpscaleJobResult({ jobId })],
+        };
+        const pollCount = state.pollCounts.get(jobId) || 0;
+        state.pollCounts.set(jobId, pollCount + 1);
+        const sequence = config.sequence || [];
+        const payload = sequence[Math.min(pollCount, Math.max(sequence.length - 1, 0))];
+        const status = payload?.httpStatus || 200;
+        const { httpStatus, ...body } = payload || makeAIUpscaleJobResult({ jobId });
+        void httpStatus;
+
+        await route.fulfill({
+          status,
+          contentType: 'application/json',
+          body: JSON.stringify(body),
+        });
+        return;
+      }
+    }
+
+    const previewMatch = pathname.match(/^\/ai-upscale\/artifacts\/([^/]+)\/preview$/);
+    if (previewMatch && method === 'GET') {
+      state.previewArtifactIds.push(previewMatch[1]);
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        body: previewBuffer,
+      });
+      return;
+    }
+
+    const downloadMatch = pathname.match(/^\/ai-upscale\/artifacts\/([^/]+)\/download$/);
+    if (downloadMatch && method === 'GET') {
+      state.downloadArtifactIds.push(downloadMatch[1]);
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        body: downloadArtifactBuffer,
+      });
+      return;
+    }
+
+    if (pathname === '/ai-upscale/download-all' && method === 'POST') {
+      state.downloadAllBodies.push(request.postData() || '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/zip',
+        body: downloadAllBody,
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: `Unhandled AI upscaling route: ${method} ${pathname}` }),
+    });
+  });
+
+  return state;
 }
 
 test('redirects to login on session expiry during API actions', async ({ page, context }) => {
@@ -856,6 +1099,448 @@ test('reload restores explicit resize lock state instead of inferring it from di
   await expect(page.locator('#custom-width')).toHaveValue('1200');
   await expect(page.locator('#custom-height')).toHaveValue('800');
   await expect(page.locator('#aspect-ratio-toggle')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('workflow switch preserves optimize and AI upscale settings separately', async ({ page }) => {
+  await mockAIUpscaleService(page);
+  await login(page);
+
+  await page.locator('#compression-mode-control [data-value="web"]').click();
+  await page.locator('#format-control [data-value="webp"]').click();
+  await setRangeValue(page, '#quality-slider', 74);
+  await enableResize(page);
+  await page.locator('#custom-width').fill('1200');
+  await page.locator('#custom-height').fill('');
+
+  await expect(page.locator('#settings-summary')).toContainText('Balanced');
+  await expect(page.locator('#settings-summary')).toContainText('WebP');
+  await expect(page.locator('#settings-summary')).toContainText('Q74');
+  await expect(page.locator('#settings-summary')).toContainText('Fit width 1200px');
+
+  await enableAIUpscale(page);
+  await expect(page.locator('#ai-upscale-status')).toContainText('ready');
+  await expect(page.locator('[data-section="compression"]')).toBeHidden();
+  await expect(page.locator('[data-section="ai-upscale"]')).toBeVisible();
+
+  await page.locator('#ai-model-control [data-value="anime"]').click();
+  await page.locator('#ai-scale-control [data-value="4"]').click();
+  await page.locator('#ai-format-control [data-value="webp"]').click();
+  await setRangeValue(page, '#ai-quality-slider', 88);
+
+  await expect(page.locator('#settings-summary')).toContainText('AI Upscale');
+  await expect(page.locator('#settings-summary')).toContainText('Anime');
+  await expect(page.locator('#settings-summary')).toContainText('4x');
+  await expect(page.locator('#settings-summary')).toContainText('WebP');
+  await expect(page.locator('#settings-summary')).toContainText('Q88');
+
+  await page.locator('#workflow-control [data-value="optimize"]').click();
+  await expect(page.locator('[data-section="compression"]')).toBeVisible();
+  await expect(page.locator('#compression-mode-control [data-value="web"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('#format-control [data-value="webp"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('#quality-slider')).toHaveValue('74');
+  await expect(page.locator('#custom-width')).toHaveValue('1200');
+  await expect(page.locator('#custom-height')).toHaveValue('');
+
+  await enableAIUpscale(page);
+  await expect(page.locator('#ai-model-control [data-value="anime"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('#ai-scale-control [data-value="4"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('#ai-format-control [data-value="webp"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('#ai-quality-slider')).toHaveValue('88');
+});
+
+test('AI upscale uploads poll jobs, hide crop controls, and reprocess with new settings', async ({ page }) => {
+  const aiMock = await mockAIUpscaleService(page, {
+    jobs: [
+      {
+        id: 'job-1',
+        result: { filename: 'upscaled-1.png', modelPreset: 'photo', scale: 2, format: 'PNG' },
+      },
+      {
+        id: 'job-2',
+        result: { filename: 'upscaled-2.png', modelPreset: 'photo', scale: 2, format: 'PNG' },
+      },
+      {
+        id: 'job-3',
+        result: { filename: 'upscaled-1.jpg', modelPreset: 'photo', scale: 4, format: 'JPEG' },
+      },
+      {
+        id: 'job-4',
+        result: { filename: 'upscaled-2.jpg', modelPreset: 'photo', scale: 4, format: 'JPEG' },
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await expect(page.locator('#ai-upscale-status')).toContainText('ready');
+
+  await uploadFiles(page, makeFiles(2, 'ai-upscale'));
+  await waitForDoneCount(page, 2);
+
+  expect(aiMock.createBodies).toHaveLength(2);
+  expect(aiMock.createBodies[0]).toMatch(/name="model_preset";?[^\r\n]*\r\n\r\nphoto\r\n/);
+  expect(aiMock.createBodies[0]).toMatch(/name="scale";?[^\r\n]*\r\n\r\n2\r\n/);
+  expect(aiMock.createBodies[0]).toMatch(/name="output_format";?[^\r\n]*\r\n\r\npng\r\n/);
+  expect(aiMock.createBodies[0]).not.toContain('name="quality"');
+
+  await expect(page.locator('.tile').first().locator('.tile__status-badges')).toContainText('AI Upscaled');
+  await expect(page.locator('.tile').first().locator('.tile__status-badges')).toContainText('x2');
+  await expect(page.locator('.tile').first().locator('.tile__crop-btn')).toBeHidden();
+  await expect(page.locator('.tile').first().locator('.tile__image')).toHaveAttribute(
+    'src',
+    /\/ai-upscale\/artifacts\/job-1-preview\/preview/,
+  );
+
+  await page.locator('#ai-scale-control [data-value="4"]').click();
+  await page.locator('#ai-format-control [data-value="jpeg"]').click();
+  await expect(page.getByRole('button', { name: 'Re-process' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Re-process' }).click();
+  await expect.poll(() => aiMock.deletedJobIds.length).toBe(2);
+  await expect.poll(() => aiMock.createCount).toBe(4);
+  await waitForDoneCount(page, 2);
+  expect(aiMock.deletedJobHeaders).toHaveLength(2);
+  aiMock.deletedJobHeaders.forEach((headers) => {
+    expect(headers['x-csrftoken']).toBeTruthy();
+  });
+
+  await expect(page.locator('.tile').first().locator('.tile__status-badges')).toContainText('x4');
+  await expect(page.locator('.tile').first().locator('.tile__status-badges')).toContainText('→ JPEG');
+
+  await page.getByRole('button', { name: 'Download All' }).click();
+  await expect.poll(() => aiMock.downloadAllBodies.length).toBe(1);
+});
+
+test('AI upscale downloads a single artifact result', async ({ page }) => {
+  const aiMock = await mockAIUpscaleService(page, {
+    jobs: [
+      {
+        id: 'job-single-download',
+        result: { filename: 'single-download.png', modelPreset: 'photo', scale: 2, format: 'PNG' },
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await uploadFiles(page, makeFiles(1, 'ai-single-download'));
+  await waitForDoneCount(page, 1);
+
+  await page.locator('.tile').first().locator('.tile__download-btn').click();
+  await expect.poll(() => aiMock.downloadArtifactIds).toEqual(['job-single-download-download']);
+});
+
+test('AI upscale health shows bootstrapping copy while the worker is starting', async ({ page }) => {
+  await mockAIUpscaleService(page, {
+    health: {
+      enabled: true,
+      healthy: false,
+      state: 'starting',
+      backend: 'torch-cpu',
+      reason: 'Preloading AI upscaling models into memory…',
+      details: { cached_models: [], cpu_threads: 4 },
+    },
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+
+  await expect(page.locator('#ai-upscale-status')).toContainText('Preloading AI upscaling models');
+});
+
+test('AI upscale auto-recovers when the worker finishes booting after the first health check', async ({ page }) => {
+  const health = {
+    enabled: true,
+    healthy: false,
+    state: 'starting',
+    backend: 'torch-cpu',
+    worker_instance_id: null,
+    started_at: null,
+    reason: 'Preloading AI upscaling models into memory…',
+    details: { cached_models: [], cpu_threads: 4 },
+  };
+  const aiMock = await mockAIUpscaleService(page, {
+    health,
+    jobs: [
+      {
+        id: 'job-after-startup',
+        result: { filename: 'job-after-startup.png', scale: 2 },
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await uploadFiles(page, makeFiles(1, 'ai-starting'));
+
+  await expect(page.locator('#ai-upscale-status')).toContainText('Preloading AI upscaling models');
+  await expect.poll(() => aiMock.createCount).toBe(0);
+
+  Object.assign(health, {
+    healthy: true,
+    state: 'ready',
+    worker_instance_id: 'worker-ready',
+    started_at: '2026-04-13T10:05:00+00:00',
+    reason: 'AI upscaling service ready',
+  });
+
+  await expect.poll(() => aiMock.createCount, { timeout: 10_000 }).toBe(1);
+  await waitForDoneCount(page, 1);
+  await expect(page.locator('#ai-upscale-status')).toContainText('AI upscaling service ready');
+});
+
+test('AI upscale stops retrying health checks after the configured retry budget', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__AI_UPSCALE_HEALTH_RETRY_DELAYS_MS = [20, 20, 20];
+    window.__AI_UPSCALE_HEALTH_MAX_RETRIES = 3;
+  });
+
+  const aiMock = await mockAIUpscaleService(page, {
+    health: {
+      enabled: true,
+      healthy: false,
+      state: 'starting',
+      backend: 'torch-cpu',
+      reason: 'Preloading AI upscaling models into memory…',
+      details: { cached_models: [], cpu_threads: 4 },
+    },
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+
+  await expect(page.locator('#ai-upscale-status')).toContainText('taking too long', { timeout: 10_000 });
+  const settledCount = aiMock.healthCount;
+  await page.waitForTimeout(200);
+  expect(aiMock.healthCount).toBe(settledCount);
+});
+
+test('AI upscale tiles surface queue and progress text from polling', async ({ page }) => {
+  const aiMock = await mockAIUpscaleService(page, {
+    jobs: [
+      {
+        id: 'job-progress',
+        sequence: [
+          { job_id: 'job-progress', status: 'queued', phase: 'queued', progress: 0, queue_position: 2 },
+          { job_id: 'job-progress', status: 'processing', phase: 'running', progress: 42, queue_position: null },
+          makeAIUpscaleJobResult({ jobId: 'job-progress', filename: 'job-progress.png', scale: 2 }),
+        ],
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await uploadFiles(page, makeFiles(1, 'ai-progress'));
+
+  await expect(page.locator('.tile__progress-text')).toContainText('Queued');
+  await expect(page.locator('.tile__progress-text')).toContainText('position 2');
+  await expect(page.locator('.tile__progress-text')).toContainText('42%', { timeout: 10_000 });
+  await waitForDoneCount(page, 1);
+
+  expect(aiMock.pollCounts.get('job-progress')).toBe(3);
+  await page.waitForTimeout(2200);
+  expect(aiMock.pollCounts.get('job-progress')).toBe(3);
+});
+
+test('AI upscale marks stalled jobs retryable when progress stops changing', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__AI_UPSCALE_STALL_TIMEOUT_MS = 250;
+  });
+
+  const aiMock = await mockAIUpscaleService(page, {
+    jobs: [
+      {
+        id: 'job-stalled',
+        sequence: [
+          {
+            job_id: 'job-stalled',
+            status: 'processing',
+            phase: 'running',
+            progress: 18,
+            queue_position: null,
+            worker_instance_id: 'worker-a',
+            updated_at: 1,
+          },
+        ],
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await uploadFiles(page, makeFiles(1, 'ai-stalled'));
+
+  await expect(page.locator('.tile__progress-text')).toContainText('18%');
+  await expect(page.locator('.tile__error')).toContainText('stopped making progress', { timeout: 10_000 });
+  await expect(page.locator('.tile__retry-btn')).toBeVisible();
+  expect(aiMock.pollCounts.get('job-stalled')).toBeGreaterThanOrEqual(2);
+});
+
+test('AI upscale marks jobs retryable when the worker restarts mid-poll', async ({ page }) => {
+  const health = {
+    enabled: true,
+    healthy: true,
+    state: 'ready',
+    backend: 'torch-cpu',
+    worker_instance_id: 'worker-a',
+    started_at: '2026-04-13T10:00:00+00:00',
+    reason: 'AI upscaling service ready',
+    details: { cached_models: [], cpu_threads: 4 },
+  };
+  const aiMock = await mockAIUpscaleService(page, {
+    health,
+    jobs: [
+      {
+        id: 'job-restart',
+        createResponse: { worker_instance_id: 'worker-a' },
+        sequence: [
+          { job_id: 'job-restart', status: 'processing', phase: 'running', progress: 15, worker_instance_id: 'worker-a' },
+          { httpStatus: 404, error: 'Job not found.' },
+        ],
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await uploadFiles(page, makeFiles(1, 'ai-restart'));
+
+  await expect(page.locator('.tile__progress-text')).toContainText('15%');
+  health.worker_instance_id = 'worker-b';
+  health.started_at = '2026-04-13T10:05:00+00:00';
+
+  await expect(page.locator('.tile__error')).toContainText('worker restarted during processing', { timeout: 10_000 });
+  await expect(page.locator('.tile__retry-btn')).toBeVisible();
+  expect(aiMock.pollCounts.get('job-restart')).toBeGreaterThanOrEqual(2);
+});
+
+test('AI upscale keeps jobs retryable when the worker restart window returns 503s', async ({ page }) => {
+  const health = {
+    enabled: true,
+    healthy: true,
+    state: 'ready',
+    backend: 'torch-cpu',
+    worker_instance_id: 'worker-a',
+    started_at: '2026-04-13T10:00:00+00:00',
+    reason: 'AI upscaling service ready',
+    details: { cached_models: [], cpu_threads: 4 },
+  };
+  const aiMock = await mockAIUpscaleService(page, {
+    health,
+    jobs: [
+      {
+        id: 'job-restart-503',
+        createResponse: { worker_instance_id: 'worker-a' },
+        sequence: [
+          { job_id: 'job-restart-503', status: 'processing', phase: 'running', progress: 21, worker_instance_id: 'worker-a' },
+          { httpStatus: 503, error: 'AI upscaling service is unavailable.' },
+        ],
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await uploadFiles(page, makeFiles(1, 'ai-restart-503'));
+
+  await expect(page.locator('.tile__progress-text')).toContainText('21%');
+  Object.assign(health, {
+    httpStatus: 503,
+    healthy: false,
+    state: 'starting',
+    worker_instance_id: null,
+    started_at: null,
+    reason: 'AI upscaling service is unavailable.',
+  });
+
+  await expect(page.locator('.tile__error')).toContainText('worker restarted during processing', { timeout: 10_000 });
+  await expect(page.locator('.tile__retry-btn')).toBeVisible();
+  expect(aiMock.pollCounts.get('job-restart-503')).toBeGreaterThanOrEqual(2);
+});
+
+test('AI upscale shows a friendly memory-limit message for oversized jobs', async ({ page }) => {
+  await mockAIUpscaleService(page, {
+    jobs: [
+      {
+        createHttpStatus: 409,
+        createResponse: {
+          code: 'memory_budget_exceeded',
+          estimated_peak_bytes: 926563636,
+          memory_limit_bytes: 2147483648,
+          memory_soft_limit_bytes: 926102323,
+          projected_output: { width: 12800, height: 12800, pixels: 163840000 },
+          suggested_scale: 2,
+        },
+      },
+    ],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await page.locator('#ai-scale-control [data-value="4"]').click();
+  await uploadFiles(page, makeFiles(1, 'ai-memory'));
+
+  await expect(page.locator('.tile__error')).toContainText('too large for AI upscaling on the current server', { timeout: 10_000 });
+  await expect(page.locator('.tile__error')).toContainText('Try 2x instead.');
+  await expect(page.locator('.tile__retry-btn')).toBeVisible();
+});
+
+test('AI upscale cancel marks work as cancelled and retry incomplete completes the batch', async ({ page }) => {
+  const stalledJobs = [{
+    id: 'slow-1',
+    sequence: [
+      { job_id: 'slow-1', status: 'processing' },
+    ],
+  }];
+  const retryJobs = Array.from({ length: 7 }, (_, index) => ({
+    id: `retry-${index + 1}`,
+    result: { filename: `retry-${index + 1}.png`, modelPreset: 'photo', scale: 2, format: 'PNG' },
+  }));
+
+  const aiMock = await mockAIUpscaleService(page, {
+    jobs: [...stalledJobs, ...retryJobs],
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+
+  await uploadFiles(page, makeFiles(7, 'ai-cancel'));
+  await expect.poll(() => aiMock.createCount).toBe(1);
+  expect(aiMock.createCount).toBe(1);
+  await page.locator('#cancel-batch').click();
+
+  await expect(page.locator('.badge--cancelled').first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Retry Incomplete' })).toBeVisible();
+  await expect.poll(() => aiMock.cancelledJobIds.length).toBeGreaterThan(0);
+
+  await page.getByRole('button', { name: 'Retry Incomplete' }).click();
+  await waitForDoneCount(page, 7);
+  await expect.poll(() => aiMock.createCount).toBe(8);
+});
+
+test('AI upscale disabled health shows a clear reason and blocks auto-processing', async ({ page }) => {
+  const aiMock = await mockAIUpscaleService(page, {
+    health: {
+      enabled: true,
+      healthy: false,
+      reason: 'AI upscaling worker is missing required Real-ESRGAN models.',
+    },
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+
+  await expect(page.locator('#ai-upscale-status')).toContainText('missing required Real-ESRGAN models');
+  await expect(page.locator('#settings-summary')).toContainText('Unavailable');
+
+  await uploadFiles(page, makeFiles(1, 'ai-disabled'));
+
+  await expect(page.locator('.tile')).toHaveCount(1);
+  await expect.poll(() => aiMock.createCount).toBe(0);
+  await expect(page.locator('.toast--warning').filter({
+    hasText: 'AI upscaling worker is missing required Real-ESRGAN models.',
+  })).toHaveCount(1);
 });
 
 test('desktop overflow scroll stays inside the content column when the sidebar is open', async ({ page }) => {
