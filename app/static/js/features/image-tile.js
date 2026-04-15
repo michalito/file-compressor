@@ -233,6 +233,42 @@ export async function processTile(fileId, { skipGlobalProgress = false, signal }
   return processImage(fileId, tile, skipGlobalProgress, signal);
 }
 
+function getTileProgressElements(tile) {
+  return {
+    progressEl: tile.querySelector('.tile__progress'),
+    progressBar: tile.querySelector('.progress-inline__bar'),
+    progressText: tile.querySelector('.tile__progress-text'),
+  };
+}
+
+function showBasicTileProgress(tile, text = 'Processing…') {
+  const { progressEl, progressBar, progressText } = getTileProgressElements(tile);
+  if (!progressEl || !progressBar || !progressText) return;
+
+  progressEl.classList.remove('is-hidden');
+  progressBar.classList.add('progress-inline__bar--indeterminate');
+  progressBar.style.width = '';
+  progressBar.removeAttribute('aria-valuenow');
+  progressBar.setAttribute('aria-valuetext', text);
+  progressText.textContent = text;
+}
+
+export function clearTileProgress(tile) {
+  if (!tile) return;
+
+  const { progressEl, progressBar, progressText } = getTileProgressElements(tile);
+  if (progressEl) progressEl.classList.add('is-hidden');
+  if (progressBar) {
+    progressBar.classList.remove('progress-inline__bar--indeterminate');
+    progressBar.style.width = '';
+    progressBar.removeAttribute('aria-valuenow');
+    progressBar.removeAttribute('aria-valuetext');
+  }
+  if (progressText) {
+    progressText.textContent = '';
+  }
+}
+
 /**
  * Reset to original file (undo all crops) and reprocess.
  */
@@ -255,6 +291,7 @@ function resetCrop(fileId, tile) {
  */
 async function retryProcessing(fileId, tile) {
   await cleanupRemoteResult(fileId);
+  clearTileProgress(tile);
 
   // Clear error state
   tile.classList.remove('is-error');
@@ -293,14 +330,13 @@ async function processOptimizeImage(fileId, tile, skipGlobalProgress = false, si
   const entry = state.files.get(fileId);
   if (!entry) return;
 
-  const progressEl = tile.querySelector('.tile__progress');
   const retryBtn = tile.querySelector('.tile__retry-btn');
   const downloadBtn = tile.querySelector('.tile__download-btn');
   const cropBtn = tile.querySelector('.tile__crop-btn');
 
   try {
     updateFile(fileId, { status: 'processing' });
-    progressEl.classList.remove('is-hidden');
+    showBasicTileProgress(tile);
     tile.classList.add('is-processing');
     retryBtn.classList.add('is-hidden');
     tile.classList.remove('is-done');
@@ -327,6 +363,7 @@ async function processOptimizeImage(fileId, tile, skipGlobalProgress = false, si
 
     const response = await postForm('/process', formData, { signal });
     const result = await response.json();
+    clearTileProgress(tile);
 
     // On reprocess, carry forward the original upload's size so savings
     // percentage stays relative to the upload, not the intermediate file
@@ -430,7 +467,7 @@ async function processOptimizeImage(fileId, tile, skipGlobalProgress = false, si
       duration: isRateLimitError ? 7000 : undefined,
     });
   } finally {
-    progressEl.classList.add('is-hidden');
+    clearTileProgress(tile);
     tile.classList.remove('is-processing');
     if (!skipGlobalProgress) {
       globalProgress.hide();
@@ -443,7 +480,6 @@ async function processAIUpscaleImage(fileId, tile, skipGlobalProgress = false, s
   if (!entry) return;
   const prevOriginalSize = entry.processedData?.metadata?.original_size;
 
-  const progressEl = tile.querySelector('.tile__progress');
   const retryBtn = tile.querySelector('.tile__retry-btn');
   const downloadBtn = tile.querySelector('.tile__download-btn');
   const cropBtn = tile.querySelector('.tile__crop-btn');
@@ -478,6 +514,7 @@ async function processAIUpscaleImage(fileId, tile, skipGlobalProgress = false, s
     });
 
     const result = await pollAIUpscaleJob(fileId, jobId, signal);
+    clearTileProgress(tile);
     const resultMetadata = { ...result.result.metadata };
     if (prevOriginalSize) {
       resultMetadata.original_size = prevOriginalSize;
@@ -572,7 +609,7 @@ async function processAIUpscaleImage(fileId, tile, skipGlobalProgress = false, s
       type: 'error',
     });
   } finally {
-    progressEl.classList.add('is-hidden');
+    clearTileProgress(tile);
     tile.classList.remove('is-processing');
     if (!skipGlobalProgress) {
       globalProgress.hide();
@@ -610,13 +647,12 @@ async function downloadFile(fileId, tile) {
 }
 
 function prepareTileForProcessing(fileId, tile, { skipGlobalProgress = false, hideCrop = false } = {}) {
-  const progressEl = tile.querySelector('.tile__progress');
   const retryBtn = tile.querySelector('.tile__retry-btn');
   const downloadBtn = tile.querySelector('.tile__download-btn');
   const cropBtn = tile.querySelector('.tile__crop-btn');
 
   updateFile(fileId, { status: 'processing', errorMessage: null });
-  progressEl.classList.remove('is-hidden');
+  showBasicTileProgress(tile, 'Queued');
   tile.classList.add('is-processing');
   retryBtn.classList.add('is-hidden');
   tile.classList.remove('is-done', 'is-error');
@@ -840,7 +876,7 @@ function syncAIProgress(tile, { phase, progress, queuePosition }) {
 
   if (numericProgress == null) {
     progressBar.classList.add('progress-inline__bar--indeterminate');
-    progressBar.style.width = '30%';
+    progressBar.style.width = '';
     progressBar.removeAttribute('aria-valuenow');
   } else {
     progressBar.classList.remove('progress-inline__bar--indeterminate');

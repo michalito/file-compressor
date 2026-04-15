@@ -52,6 +52,14 @@ async function enableAIUpscale(page) {
   await page.locator('#workflow-control [data-value="ai-upscale"]').click();
 }
 
+async function expectAIUpscaleStatus(page, label, title) {
+  const status = page.locator('#ai-upscale-status');
+  await expect(status).toHaveText(label);
+  if (title != null) {
+    await expect(status).toHaveAttribute('title', title);
+  }
+}
+
 async function openWatermarkTab(page, layer) {
   await page.locator(`#watermark-tab-${layer}`).click();
 }
@@ -1118,7 +1126,7 @@ test('workflow switch preserves optimize and AI upscale settings separately', as
   await expect(page.locator('#settings-summary')).toContainText('Fit width 1200px');
 
   await enableAIUpscale(page);
-  await expect(page.locator('#ai-upscale-status')).toContainText('ready');
+  await expectAIUpscaleStatus(page, 'Ready', 'AI upscaling service ready');
   await expect(page.locator('[data-section="compression"]')).toBeHidden();
   await expect(page.locator('[data-section="ai-upscale"]')).toBeVisible();
 
@@ -1172,7 +1180,7 @@ test('AI upscale uploads poll jobs, hide crop controls, and reprocess with new s
 
   await login(page);
   await enableAIUpscale(page);
-  await expect(page.locator('#ai-upscale-status')).toContainText('ready');
+  await expectAIUpscaleStatus(page, 'Ready', 'AI upscaling service ready');
 
   await uploadFiles(page, makeFiles(2, 'ai-upscale'));
   await waitForDoneCount(page, 2);
@@ -1211,6 +1219,50 @@ test('AI upscale uploads poll jobs, hide crop controls, and reprocess with new s
   await expect.poll(() => aiMock.downloadAllBodies.length).toBe(1);
 });
 
+test('optimize reprocess clears stale tile progress state after AI upscale', async ({ page }) => {
+  await mockAIUpscaleService(page, {
+    jobs: [
+      {
+        id: 'job-switch-progress',
+        result: { filename: 'job-switch-progress.png', modelPreset: 'photo', scale: 2, format: 'PNG' },
+      },
+    ],
+  });
+
+  await page.route('**/process', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill(mockProcessResponse());
+  });
+
+  await login(page);
+  await enableAIUpscale(page);
+  await expectAIUpscaleStatus(page, 'Ready', 'AI upscaling service ready');
+
+  await uploadFiles(page, makeFiles(1, 'workflow-switch-progress'));
+  await waitForDoneCount(page, 1);
+
+  await page.locator('#workflow-control [data-value="optimize"]').click();
+  await page.getByRole('button', { name: 'Re-process' }).click();
+
+  const tile = page.locator('#image-grid > .tile').first();
+  const progress = tile.locator('.tile__progress');
+  await expect(progress).toBeVisible();
+  await expect(progress.locator('.tile__progress-text')).toHaveText('Processing…');
+  await expect(progress.locator('.progress-inline__bar')).toHaveClass(/progress-inline__bar--indeterminate/);
+
+  await waitForDoneCount(page, 1);
+  await expect(progress).toBeHidden();
+
+  const progressState = await progress.evaluate((el) => ({
+    text: el.querySelector('.tile__progress-text')?.textContent || '',
+    barStyleWidth: el.querySelector('.progress-inline__bar')?.getAttribute('style') || '',
+    barClassName: el.querySelector('.progress-inline__bar')?.className || '',
+  }));
+  expect(progressState.text).toBe('');
+  expect(progressState.barStyleWidth).toBe('');
+  expect(progressState.barClassName).toBe('progress-inline__bar');
+});
+
 test('AI upscale downloads a single artifact result', async ({ page }) => {
   const aiMock = await mockAIUpscaleService(page, {
     jobs: [
@@ -1244,8 +1296,7 @@ test('AI upscale health shows bootstrapping copy while the worker is starting', 
 
   await login(page);
   await enableAIUpscale(page);
-
-  await expect(page.locator('#ai-upscale-status')).toContainText('Preloading AI upscaling models');
+  await expectAIUpscaleStatus(page, 'Starting…', 'Preloading AI upscaling models into memory…');
 });
 
 test('AI upscale auto-recovers when the worker finishes booting after the first health check', async ({ page }) => {
@@ -1273,7 +1324,7 @@ test('AI upscale auto-recovers when the worker finishes booting after the first 
   await enableAIUpscale(page);
   await uploadFiles(page, makeFiles(1, 'ai-starting'));
 
-  await expect(page.locator('#ai-upscale-status')).toContainText('Preloading AI upscaling models');
+  await expectAIUpscaleStatus(page, 'Starting…', 'Preloading AI upscaling models into memory…');
   await expect.poll(() => aiMock.createCount).toBe(0);
 
   Object.assign(health, {
@@ -1286,7 +1337,7 @@ test('AI upscale auto-recovers when the worker finishes booting after the first 
 
   await expect.poll(() => aiMock.createCount, { timeout: 10_000 }).toBe(1);
   await waitForDoneCount(page, 1);
-  await expect(page.locator('#ai-upscale-status')).toContainText('AI upscaling service ready');
+  await expectAIUpscaleStatus(page, 'Ready', 'AI upscaling service ready');
 });
 
 test('AI upscale stops retrying health checks after the configured retry budget', async ({ page }) => {
@@ -1309,7 +1360,8 @@ test('AI upscale stops retrying health checks after the configured retry budget'
   await login(page);
   await enableAIUpscale(page);
 
-  await expect(page.locator('#ai-upscale-status')).toContainText('taking too long', { timeout: 10_000 });
+  await expect(page.locator('#ai-upscale-status')).toHaveText('Unavailable', { timeout: 10_000 });
+  await expect(page.locator('#ai-upscale-status')).toHaveAttribute('title', 'AI service is taking too long to start. Try refreshing the page.');
   const settledCount = aiMock.healthCount;
   await page.waitForTimeout(200);
   expect(aiMock.healthCount).toBe(settledCount);
@@ -1531,7 +1583,7 @@ test('AI upscale disabled health shows a clear reason and blocks auto-processing
   await login(page);
   await enableAIUpscale(page);
 
-  await expect(page.locator('#ai-upscale-status')).toContainText('missing required Real-ESRGAN models');
+  await expectAIUpscaleStatus(page, 'Unavailable', 'AI upscaling worker is missing required Real-ESRGAN models.');
   await expect(page.locator('#settings-summary')).toContainText('Unavailable');
 
   await uploadFiles(page, makeFiles(1, 'ai-disabled'));

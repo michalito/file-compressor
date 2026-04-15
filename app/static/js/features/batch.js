@@ -5,7 +5,7 @@ import { $, createElement, downloadBlob, base64ToUint8Array } from '../lib/dom.j
 import { bus } from '../lib/events.js';
 import { postJSON } from '../lib/api.js';
 import { state, clearAllFiles, updateFile } from '../state/app-state.js';
-import { cleanupRemoteResult, processTile } from './image-tile.js';
+import { cleanupRemoteResult, clearTileProgress, processTile } from './image-tile.js';
 import { showToast } from '../components/toast.js';
 import { globalProgress } from '../components/progress.js';
 import { showConfirm } from '../components/confirm.js';
@@ -468,8 +468,7 @@ function markFileCancelled(fileId) {
   if (!tile) return;
 
   tile.classList.remove('is-processing', 'is-error');
-  const progressEl = tile.querySelector('.tile__progress');
-  if (progressEl) progressEl.classList.add('is-hidden');
+  clearTileProgress(tile);
 
   const errorEl = tile.querySelector('.tile__error');
   if (errorEl) errorEl.remove();
@@ -487,6 +486,7 @@ function resetTileForRetry(fileId) {
   const tile = document.querySelector(`[data-file-id="${fileId}"]`);
   if (!tile) return;
 
+  clearTileProgress(tile);
   tile.classList.remove('is-error');
   const errorEl = tile.querySelector('.tile__error');
   if (errorEl) errorEl.remove();
@@ -592,6 +592,7 @@ async function reprocessAll() {
     if (!tile) continue;
 
     tile.classList.remove('is-done');
+    clearTileProgress(tile);
     const processedSection = tile.querySelector('.tile__processed');
     if (processedSection) processedSection.classList.add('is-hidden');
 

@@ -14,6 +14,7 @@ export class ProgressController {
   }
 
   hide() {
+    this.reset();
     if (this.element) this.element.classList.add('is-hidden');
   }
 
