@@ -1,6 +1,6 @@
 {
   "name": "file-compressor",
-  "version": "1.0.0",
+  "version": "1.3.3",
   "description": "A self-hosted, password-protected web application for image compression, background removal, resizing, watermarking, and optional Real-ESRGAN AI upscaling.",
   "main": "index.js",
   "directories": {
